@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web nhận  – Nhận diện cây xanh 🌸</title>
+  <meta name="description" content="Flower Note – Ứng dụng nhận diện 50 loài cây thông minh bằng AI YOLOv8. Upload ảnh, khám phá tên loài cây ngay lập tức!" />
+  <meta name="theme-color" content="#FF91A8" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Flower Note – Nhận diện cây xanh 🌸" />
+  <meta property="og:description" content="Nhận diện 50 loài cây thông minh bằng AI. Upload ảnh và khám phá ngay!" />
+  <meta property="og:type" content="website" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Pacifico&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ════════════════════════ ANIMATED BACKGROUND ════════════════════════ -->
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
+</div>
+
+<!-- Floating decorative particles -->
+<div class="floating-particles" id="floating-particles" aria-hidden="true">
+  <span class="particle" style="--d:0s;  --x:8vw;  --s:1.0">🌿</span>
+  <span class="particle" style="--d:2s;  --x:22vw; --s:0.7">🍃</span>
+  <span class="particle" style="--d:4s;  --x:38vw; --s:0.9">🍀</span>
+  <span class="particle" style="--d:1s;  --x:55vw; --s:0.6">🌿</span>
+  <span class="particle" style="--d:3s;  --x:70vw; --s:1.1">🍃</span>
+  <span class="particle" style="--d:5s;  --x:85vw; --s:0.8">🌿</span>
+  <span class="particle" style="--d:6s;  --x:15vw; --s:0.5">🌱</span>
+  <span class="particle" style="--d:7s;  --x:90vw; --s:0.7">🍃</span>
+</div>
+
+<!-- ════════════════════════════ HEADER ════════════════════════════ -->
+<header id="header">
+  <!-- Floating bubbles background -->
+  <div class="floating-bubbles-container" aria-hidden="true">
+    <div class="floating-bubble" style="--delay: 0s; --left: 5%; --size: 0.6; --icon: '🌿'"><span>🌿</span></div>
+    <div class="floating-bubble" style="--delay: 0.5s; --left: 12%; --size: 0.8; --icon: '🌸'"><span>🌸</span></div>
+    <div class="floating-bubble" style="--delay: 1s; --left: 18%; --size: 0.5; --icon: '🍃'"><span>🍃</span></div>
+    <div class="floating-bubble" style="--delay: 1.5s; --left: 25%; --size: 0.7; --icon: '🌺'"><span>🌺</span></div>
+    <div class="floating-bubble" style="--delay: 2s; --left: 32%; --size: 0.6; --icon: '🍀'"><span>🍀</span></div>
+    <div class="floating-bubble" style="--delay: 2.5s; --left: 38%; --size: 0.75; --icon: '🥝'"><span>🥝</span></div>
+    <div class="floating-bubble" style="--delay: 3s; --left: 45%; --size: 0.55; --icon: '🌼'"><span>🌼</span></div>
+    <div class="floating-bubble" style="--delay: 3.5s; --left: 51%; --size: 0.65; --icon: '🌷'"><span>🌷</span></div>
+    <div class="floating-bubble" style="--delay: 4s; --left: 58%; --size: 0.7; --icon: '🌻'"><span>🌻</span></div>
+    <div class="floating-bubble" style="--delay: 4.5s; --left: 64%; --size: 0.6; --icon: '🍂'"><span>🍂</span></div>
+    <div class="floating-bubble" style="--delay: 5s; --left: 71%; --size: 0.8; --icon: '🌿'"><span>🌿</span></div>
+    <div class="floating-bubble" style="--delay: 5.5s; --left: 77%; --size: 0.55; --icon: '🌸'"><span>🌸</span></div>
+    <div class="floating-bubble" style="--delay: 6s; --left: 83%; --size: 0.7; --icon: '🍃'"><span>🍃</span></div>
+    <div class="floating-bubble" style="--delay: 6.5s; --left: 90%; --size: 0.65; --icon: '🌺'"><span>🌺</span></div>
+    <div class="floating-bubble" style="--delay: 7s; --left: 8%; --size: 0.6; --icon: '🍀'"><span>🍀</span></div>
+    <div class="floating-bubble" style="--delay: 7.5s; --left: 15%; --size: 0.75; --icon: '🥝'"><span>🥝</span></div>
+    <div class="floating-bubble" style="--delay: 8s; --left: 22%; --size: 0.55; --icon: '🌼'"><span>🌼</span></div>
+    <div class="floating-bubble" style="--delay: 8.5s; --left: 28%; --size: 0.65; --icon: '🌷'"><span>🌷</span></div>
+    <div class="floating-bubble" style="--delay: 9s; --left: 35%; --size: 0.7; --icon: '🌻'"><span>🌻</span></div>
+    <div class="floating-bubble" style="--delay: 9.5s; --left: 42%; --size: 0.6; --icon: '🍂'"><span>🍂</span></div>
+    <div class="floating-bubble" style="--delay: 10s; --left: 48%; --size: 0.8; --icon: '🌿'"><span>🌿</span></div>
+    <div class="floating-bubble" style="--delay: 10.5s; --left: 55%; --size: 0.55; --icon: '🌸'"><span>🌸</span></div>
+    <div class="floating-bubble" style="--delay: 11s; --left: 62%; --size: 0.7; --icon: '🍃'"><span>🍃</span></div>
+    <div class="floating-bubble" style="--delay: 11.5s; --left: 69%; --size: 0.65; --icon: '🌺'"><span>🌺</span></div>
+    <div class="floating-bubble" style="--delay: 12s; --left: 76%; --size: 0.6; --icon: '🍀'"><span>🍀</span></div>
+    <div class="floating-bubble" style="--delay: 12.5s; --left: 82%; --size: 0.75; --icon: '🥝'"><span>🥝</span></div>
+    <div class="floating-bubble" style="--delay: 13s; --left: 3%; --size: 0.55; --icon: '🌼'"><span>🌼</span></div>
+    <div class="floating-bubble" style="--delay: 13.5s; --left: 10%; --size: 0.65; --icon: '🌷'"><span>🌷</span></div>
+    <div class="floating-bubble" style="--delay: 14s; --left: 17%; --size: 0.7; --icon: '🌻'"><span>🌻</span></div>
+    <div class="floating-bubble" style="--delay: 14.5s; --left: 24%; --size: 0.6; --icon: '🍂'"><span>🍂</span></div>
+    <div class="floating-bubble" style="--delay: 15s; --left: 30%; --size: 0.8; --icon: '🌿'"><span>🌿</span></div>
+    <div class="floating-bubble" style="--delay: 15.5s; --left: 37%; --size: 0.55; --icon: '🌸'"><span>🌸</span></div>
+    <div class="floating-bubble" style="--delay: 16s; --left: 44%; --size: 0.7; --icon: '🍃'"><span>🍃</span></div>
+    <div class="floating-bubble" style="--delay: 16.5s; --left: 50%; --size: 0.65; --icon: '🌺'"><span>🌺</span></div>
+    <div class="floating-bubble" style="--delay: 17s; --left: 57%; --size: 0.6; --icon: '🍀'"><span>🍀</span></div>
+    <div class="floating-bubble" style="--delay: 17.5s; --left: 63%; --size: 0.75; --icon: '🥝'"><span>🥝</span></div>
+    <div class="floating-bubble" style="--delay: 18s; --left: 70%; --size: 0.55; --icon: '🌼'"><span>🌼</span></div>
+    <div class="floating-bubble" style="--delay: 18.5s; --left: 77%; --size: 0.65; --icon: '🌷'"><span>🌷</span></div>
+    <div class="floating-bubble" style="--delay: 19s; --left: 85%; --size: 0.7; --icon: '🌻'"><span>🌻</span></div>
+    <div class="floating-bubble" style="--delay: 19.5s; --left: 11%; --size: 0.6; --icon: '🍂'"><span>🍂</span></div>
+    <div class="floating-bubble" style="--delay: 20s; --left: 19%; --size: 0.8; --icon: '🌿'"><span>🌿</span></div>
+    <div class="floating-bubble" style="--delay: 20.5s; --left: 26%; --size: 0.55; --icon: '🌸'"><span>🌸</span></div>
+    <div class="floating-bubble" style="--delay: 21s; --left: 33%; --size: 0.7; --icon: '🍃'"><span>🍃</span></div>
+    <div class="floating-bubble" style="--delay: 21.5s; --left: 40%; --size: 0.65; --icon: '🌺'"><span>🌺</span></div>
+    <div class="floating-bubble" style="--delay: 22s; --left: 46%; --size: 0.6; --icon: '🍀'"><span>🍀</span></div>
+    <div class="floating-bubble" style="--delay: 22.5s; --left: 53%; --size: 0.75; --icon: '🥝'"><span>🥝</span></div>
+    <div class="floating-bubble" style="--delay: 23s; --left: 59%; --size: 0.55; --icon: '🌼'"><span>🌼</span></div>
+    <div class="floating-bubble" style="--delay: 23.5s; --left: 66%; --size: 0.65; --icon: '🌷'"><span>🌷</span></div>
+    <div class="floating-bubble" style="--delay: 24s; --left: 72%; --size: 0.7; --icon: '🌻'"><span>🌻</span></div>
+    <div class="floating-bubble" style="--delay: 24.5s; --left: 79%; --size: 0.6; --icon: '🍂'"><span>🍂</span></div>
+    <div class="floating-bubble" style="--delay: 25s; --left: 88%; --size: 0.8; --icon: '🌿'"><span>🌿</span></div>
+  </div>
+
+  <div class="header-content">
+    <!-- Logo -->
+    <div class="logo-wrap">
+      <div class="logo-ring" id="logo-icon" aria-label="Logo Flower Note">
+        <span class="logo-emoji" id="main-logo-emoji">🌿</span>
+        <div class="logo-glow"></div>
+      </div>
+    </div>
+
+    <!-- Title & tagline -->
+    <div class="header-text">
+      <div class="title-with-bubbles">
+        <div class="bubble-group bubble-left">
+          <div class="bubble" style="animation-delay: 0s">🌿</div>
+          <div class="bubble" style="animation-delay: 0.2s">🌸</div>
+          <div class="bubble" style="animation-delay: 0.4s">🍃</div>
+        </div>
+        <h1>Flower Note</h1>
+        <div class="bubble-group bubble-right">
+          <div class="bubble" style="animation-delay: 0.1s">🌺</div>
+          <div class="bubble" style="animation-delay: 0.3s">🍀</div>
+          <div class="bubble" style="animation-delay: 0.5s">🥝</div>
+        </div>
+      </div>
+      <p class="tagline">
+        <span class="emoji-icon">🌿</span>
+        Nhận diện <strong>50 loài cây</strong> thông minh bằng AI
+        <span class="emoji-icon">✨</span>
+      </p>
+    </div>
+
+    <!-- Stats pills -->
+    <div class="header-stats" aria-label="Thống kê hệ thống">
+      <div class="stat-pill" id="stat-model">
+        <i class="fa-solid fa-robot"></i>
+        <span>YOLOv8</span>
+      </div>
+      <div class="stat-pill" id="stat-classes">
+        <i class="fa-solid fa-seedling"></i>
+        <span>50 Loài</span>
+      </div>
+      <div class="stat-pill" id="stat-status">
+        <i class="fa-solid fa-circle" id="status-dot"></i>
+        <span id="status-text">Đang kết nối…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wave divider -->
+  <div class="header-wave" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 60" preserveAspectRatio="none">
+      <path d="M0,30 C240,60 480,0 720,30 C960,60 1200,0 1440,30 L1440,60 L0,60 Z"/>
+    </svg>
+  </div>
+</header>
+
+<!-- ════════════════════════════ MAIN ════════════════════════════ -->
+<main class="main-wrapper" id="main">
+
+  <!-- ── UPLOAD SECTION ── -->
+  <section class="section-card upload-section" aria-labelledby="upload-heading" id="upload-section">
+
+    <div class="section-header">
+      <div class="section-icon">
+        <i class="fa-solid fa-camera-retro"></i>
+      </div>
+      <div>
+        <h2 id="upload-heading">Chọn ảnh cây của bạn</h2>
+        <p class="section-sub">Hỗ trợ JPG, PNG, WEBP · Tối đa 10 MB</p>
+      </div>
+    </div>
+
+    <!-- ── TABS NGUỒN ẢNH ── -->
+    <div class="upload-tabs-nav" role="tablist" aria-label="Phương thức chọn ảnh">
+      <button class="upload-tab-btn active" data-upmode="file" role="tab" aria-selected="true"><i class="fa-solid fa-image"></i> Tải ảnh</button>
+      <button class="upload-tab-btn" data-upmode="webcam" role="tab" aria-selected="false"><i class="fa-solid fa-camera"></i> Webcam</button>
+      <button class="upload-tab-btn" data-upmode="url" role="tab" aria-selected="false"><i class="fa-solid fa-link"></i> Link URL</button>
+    </div>
+
+    <div class="upload-tabs-content">
+      <!-- 1. Panel File -->
+      <div class="upload-panel active" id="upanel-file" role="tabpanel">
+        <!-- Drop Zone -->
+        <div id="drop-zone"
+             role="button"
+             tabindex="0"
+             aria-label="Kéo thả ảnh hoặc nhấn để chọn file"
+             aria-describedby="drop-zone-hint">
+
+          <div class="drop-zone-inner">
+            <div class="drop-zone-icon-wrap">
+              <div class="drop-zone-icon" id="drop-zone-emoji">🌿</div>
+              <div class="drop-zone-rings" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <p class="drop-zone-title">Kéo &amp; thả ảnh vào đây</p>
+            <p class="drop-zone-sub" id="drop-zone-hint">
+              hoặc <span class="highlight">nhấn để duyệt file</span>
+            </p>
+            <div class="drop-zone-formats">
+              <span>JPG</span><span>PNG</span><span>WEBP</span>
+            </div>
+          </div>
+
+          <!-- Drag overlay -->
+          <div class="drop-zone-overlay" aria-hidden="true">
+            <span class="overlay-icon">💖</span>
+            <p>Thả ảnh vào đây!</p>
+          </div>
+        </div>
+
+        <!-- Hidden input -->
+        <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" aria-hidden="true" tabindex="-1" />
+      </div>
+
+      <!-- 2. Panel Webcam -->
+      <div class="upload-panel" id="upanel-webcam" role="tabpanel">
+        <div class="webcam-container">
+          <video id="webcam-video" autoplay playsinline></video>
+          
+
+          <div class="webcam-overlay" id="webcam-overlay">
+            <i class="fa-solid fa-camera fa-2x"></i>
+            <p>Đang bật camera...</p>
+          </div>
+        </div>
+        <div class="webcam-actions">
+          <button id="btn-capture" class="btn-action">
+            <i class="fa-solid fa-camera"></i> Chụp ảnh
+          </button>
+        </div>
+        <canvas id="webcam-canvas" style="display: none;"></canvas>
+      </div>
+
+      <!-- 3. Panel URL -->
+      <div class="upload-panel" id="upanel-url" role="tabpanel">
+        <div class="url-input-wrap">
+          <i class="fa-solid fa-link url-icon"></i>
+          <input type="url" id="url-input" placeholder="Dán link ảnh (https://...) vào đây..." autocomplete="off"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Container -->
+    <div id="preview-container" aria-label="Ảnh xem trước" role="img" aria-live="polite">
+      <div class="preview-inner">
+        <img id="preview-img" src="" alt="Ảnh xem trước" />
+        <canvas id="preview-canvas" aria-hidden="true"></canvas>
+      </div>
+      <div class="preview-actions">
+        <div class="preview-file-info">
+          <i class="fa-solid fa-image"></i>
+          <span id="preview-file-name">ảnh.jpg</span>
+          <span id="preview-file-size" class="file-size-badge"></span>
+        </div>
+        <button id="remove-img-btn" class="btn-remove" title="Xóa ảnh" aria-label="Xóa ảnh đã chọn">
+          <i class="fa-solid fa-trash-can"></i> Xóa ảnh
+        </button>
+      </div>
+    </div>
+
+    <!-- Predict Button -->
+    <div class="btn-predict-wrapper">
+      <button id="btn-predict" aria-label="Bắt đầu nhận diện cây">
+        <span class="btn-predict-bg"></span>
+        <span class="btn-predict-content">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text">Nhận diện ngay</span>
+        </span>
+        <span class="btn-shimmer" aria-hidden="true"></span>
+      </button>
+      <p class="btn-hint" id="btn-hint-text">💡 Chọn ảnh trước để bắt đầu nhận diện</p>
+    </div>
+
+  </section><!-- /upload-section -->
+
+
+  <!-- ── LOADING SPINNER ── -->
+  <div id="loading-overlay" role="status" aria-live="polite" aria-label="Đang xử lý ảnh">
+    <div class="loading-card">
+      <div class="loading-icon-wrap">
+        <div class="loading-icon" id="loading-emoji">🌿</div>
+        <div class="loading-icon-shadow" aria-hidden="true"></div>
+      </div>
+      <div class="loading-dots" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <p class="loading-title" id="loading-text">Đang nhận diện cây của bạn…</p>
+      <p class="loading-sub">AI đang phân tích ảnh, vui lòng chờ một chút 🌸</p>
+      <!-- Progress bar giả -->
+      <div class="loading-bar-bg" aria-hidden="true">
+        <div class="loading-bar-fill" id="loading-bar"></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── RESULT CARD ── -->
+  <section id="result-card"
+           role="region"
+           aria-label="Kết quả nhận diện"
+           aria-live="polite">
+
+    <div class="section-header">
+      <div class="section-icon section-icon--green">
+        <i class="fa-solid fa-seedling"></i>
+      </div>
+      <div>
+        <h2>Kết quả nhận diện</h2>
+        <p class="section-sub">Phân tích bởi mô hình GREENIE YOLOv8</p>
+      </div>
+      <!-- ⚡ Processing time badge -->
+      <div class="time-badge" id="time-badge" aria-label="Thời gian xử lý">
+        <i class="fa-solid fa-bolt"></i>
+        <span id="processing-time">–</span>
+      </div>
+    </div>
+
+    <div class="result-grid">
+
+      <!-- Left: Result image + bounding box canvas -->
+      <div class="result-img-panel">
+        <div class="result-img-wrap" id="result-img-wrap">
+          <img id="result-img" src="" alt="Ảnh nhận diện" />
+          <canvas id="result-canvas" aria-hidden="true"></canvas>
+          <div class="detection-count-badge" id="detection-badge" aria-label="Số detections">
+            <i class="fa-solid fa-crosshairs"></i>
+            <span id="detection-count">1</span> detection
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Info -->
+      <div class="result-info">
+
+        <!-- Plant name pill -->
+        <div class="info-card plant-name-card" id="res-plant-card">
+          <div class="info-card-label">
+            <i class="fa-solid fa-leaf"></i> Tên loài cây
+          </div>
+          <div class="plant-name-display">
+            <span class="plant-emoji" id="res-plant-emoji">🌿</span>
+            <div class="plant-name-text-wrapper">
+              <div class="plant-name-text" id="res-name">–</div>
+              <!-- Scientific name -->
+              <div class="scientific-name" id="res-scientific-name"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Confidence pill -->
+        <div class="info-card confidence-card">
+          <div class="info-card-label">
+            <i class="fa-solid fa-chart-simple"></i> Độ tự tin
+          </div>
+          <div class="conf-display">
+            <div class="conf-percentage" id="res-conf-text">–</div>
+            <div class="conf-grade" id="res-conf-grade"></div>
+          </div>
+          <div class="conf-bar-bg" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="res-conf-bar-wrap">
+            <div class="conf-bar-fill" id="res-conf-bar" style="width:0%"></div>
+            <div class="conf-bar-label" id="res-conf-label"></div>
+          </div>
+        </div>
+
+        <!-- ── Tab Panel thông tin chi tiết ── -->
+        <div class="detail-tabs-wrap info-card">
+          <div class="detail-tab-nav" role="tablist" aria-label="Thông tin chi tiết cây">
+            <button class="tab-btn active" data-tab="desc"   role="tab" aria-selected="true"  id="tab-desc">📋 Mô tả</button>
+            <button class="tab-btn"        data-tab="chars"  role="tab" aria-selected="false" id="tab-chars">🔍 Đặc điểm</button>
+            <button class="tab-btn"        data-tab="uses"   role="tab" aria-selected="false" id="tab-uses">🌿 Công dụng</button>
+            <button class="tab-btn"        data-tab="care"   role="tab" aria-selected="false" id="tab-care">💧 Chăm sóc</button>
+            <button class="tab-btn tab-btn--warn hidden" data-tab="warn" role="tab" aria-selected="false" id="tab-warn">⚠️ Cảnh báo</button>
+          </div>
+          <div class="detail-tab-content">
+            <div class="tab-panel active" id="panel-desc"  role="tabpanel" aria-labelledby="tab-desc">
+              <p class="desc-text" id="res-desc">–</p>
+            </div>
+            <div class="tab-panel" id="panel-chars" role="tabpanel" aria-labelledby="tab-chars">
+              <p class="desc-text" id="res-chars">–</p>
+            </div>
+            <div class="tab-panel" id="panel-uses"  role="tabpanel" aria-labelledby="tab-uses">
+              <p class="desc-text" id="res-uses">–</p>
+            </div>
+            <div class="tab-panel" id="panel-care"  role="tabpanel" aria-labelledby="tab-care">
+              <p class="desc-text" id="res-care">–</p>
+            </div>
+            <div class="tab-panel" id="panel-warn"  role="tabpanel" aria-labelledby="tab-warn">
+              <div class="warning-box" id="res-warn-box">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p id="res-warn-text">–</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="result-actions">
+          <button class="btn-action btn-retry" id="btn-retry" aria-label="Thử ảnh khác">
+            <i class="fa-solid fa-rotate-right"></i> Thử ảnh khác
+          </button>
+          <button class="btn-action btn-repredict" id="btn-repredict" aria-label="Nhận diện lại ảnh này">
+            <i class="fa-solid fa-magnifying-glass"></i> Nhận diện lại
+          </button>
+        </div>
+
+      </div><!-- /result-info -->
+    </div><!-- /result-grid -->
+
+    <!-- All detections list -->
+    <div class="all-detections" id="all-detections-wrap" aria-label="Tất cả detections">
+      <div class="all-detections-header">
+        <i class="fa-solid fa-list-check"></i> Tất cả kết quả phát hiện
+      </div>
+      <div class="detections-list" id="detections-list"></div>
+    </div>
+
+  </section><!-- /result-card -->
+
+  <!-- ── HISTORY SECTION ── -->
+  <section class="section-card history-section" id="history-section" aria-labelledby="history-heading">
+    <div class="section-header">
+      <div class="section-icon section-icon--purple">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+      </div>
+      <div>
+        <h2 id="history-heading">Lịch sử nhận diện</h2>
+        <p class="section-sub">Các lần nhận diện gần nhất · lưu trên PostgreSQL</p>
+      </div>
+      <button class="btn-clear-history" id="btn-clear-history" title="Xóa lịch sử (chỉ xóa trên màn hình)">
+        <i class="fa-solid fa-eraser"></i> Ẩn
+      </button>
+    </div>
+    <div class="history-list" id="history-list">
+      <div class="history-empty" id="history-empty">
+        <i class="fa-regular fa-folder-open"></i>
+        <p>Chưa có lịch sử nhận diện nào.</p>
+      </div>
+    </div>
+  </section>
+
+
+</main><!-- /main -->
+
+<!-- ── Toast Notification ── -->
+<div id="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+<!-- ════════════════════════════ FOOTER ════════════════════════════ -->
+<footer id="footer">
+  <div class="footer-inner">
+    <div class="footer-logo"><span id="footer-logo-emoji">🌿</span> <strong>Flower Note</strong></div>
+    <p class="footer-desc">
+      Nhận diện cây xanh thông minh với <strong>GREENIE Model</strong> · 50 loại cây
+    </p>
+    <div class="footer-tech">
+      <span>Powered by</span>
+      <a href="https://ultralytics.com" target="_blank" rel="noopener noreferrer">YOLOv8</a>
+      <span>&</span>
+      <a href="https://fastapi.tiangolo.com" target="_blank" rel="noopener noreferrer">FastAPI</a>
+    </div>
+    <p class="footer-copy">Made with 💕 · &copy; 2025 Flower Note</p>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

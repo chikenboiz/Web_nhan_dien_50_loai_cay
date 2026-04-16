@@ -1,0 +1,26 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Flower Note – Backend dependencies
+# Cài đặt: pip install -r requirements.txt
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# AI / Machine Learning
+ultralytics>=8.3.0           # YOLOv8 inference engine (8.3+ fix PyTorch 2.6 compat)
+torch>=2.0.0                 # PyTorch (CPU hoặc CUDA)
+torchvision>=0.15.0          # Tiện ích xử lý ảnh cho PyTorch
+
+# Image processing
+Pillow>=11.0.0               # Mở và xử lý ảnh (11.x hỗ trợ Python 3.14)
+numpy>=1.26.4                # Array operations
+opencv-python-headless>=4.9.0     # Xử lý ảnh không cần GUI
+
+# Database – PostgreSQL async
+sqlalchemy>=2.0.0            # ORM với async support
+asyncpg>=0.29.0              # PostgreSQL async driver (dùng với SQLAlchemy)
+
+# Utilities
+python-dotenv==1.0.1         # Đọc biến môi trường từ .env

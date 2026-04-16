@@ -1,0 +1,583 @@
+"""
+models.py – Xử lý load model YOLOv8 và dự đoán 🌿
+====================================================
+Class PlantPredictor:
+    - Load file best.pt một lần duy nhất (Singleton pattern).
+    - Tiền xử lý ảnh đầu vào từ raw bytes.
+    - Chạy inference với NMS tích hợp sẵn của ultralytics.
+    - Hậu xử lý: lọc confidence, lấy detection tốt nhất.
+    - Trả về tên cây, confidence score, bounding box và mô tả.
+"""
+
+import io
+import logging
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+from PIL import Image
+from ultralytics import YOLO
+
+# ─────────────────────────────── Logging ────────────────────────────────────
+logger = logging.getLogger(__name__)
+
+# ─────────────────────────────── Paths ──────────────────────────────────────
+BASE_DIR    = Path(__file__).parent
+MODEL_PATH  = BASE_DIR / "best.pt"
+LABELS_PATH = BASE_DIR / "labels.txt"
+
+# ─────────────────────── Database chi tiết các loài cây ─────────────────────
+# Dictionary đầy đủ thông tin: scientific_name, description, characteristics,
+# uses, care, warning – dùng để seed vào PostgreSQL.
+PLANT_DATABASE: dict[str, dict] = {
+    "Bản Tay Bắc": {
+        "scientific_name": "Trevesia palmata",
+        "description": "Cây có lá to, xẻ thùy sâu nhìn như bàn tay, thường mọc ở vùng núi Bắc Bộ.",
+        "characteristics": "Thân gỗ nhỏ, lá xẻ thùy chân vịt sâu, mép lá có răng cưa.",
+        "uses": "Cây thường được dùng làm thuốc chữa đau nhức xương khớp và trang trí cảnh quan.",
+        "care": "💧 Tưới vừa phải. ☀️ Ưa bóng râm hoặc ánh sáng mặt trời tán xạ. 🌱 Đất ẩm, thoát nước tốt.",
+        "warning": "Không có độc tính đáng kể nhưng cần tham khảo ý kiến bác sĩ khi dùng làm thuốc."
+    },
+    "Cây Đu": {
+        "scientific_name": "Ulmus",
+        "description": "Cây thân gỗ tỏa bóng mát, lá có mép hình răng cưa.",
+        "characteristics": "Vỏ cây nứt nẻ, lá hình bầu dục, mọc so le.",
+        "uses": "Làm cây cảnh bonsai, lấy gỗ hoặc làm thuốc.",
+        "care": "💧 Tưới khi đất mặt khô. ☀️ Ưa nắng. 🌱 Đất phù sa, thoát nước tốt.",
+        "warning": None
+    },
+    "Cây Xà Phòng": {
+        "scientific_name": "Sapindus",
+        "description": "Cây xà phòng (Bồ hòn) có quả chứa saponin dùng để giặt giũ tự nhiên.",
+        "characteristics": "Thân gỗ to, quả tròn nhỏ, vỏ quả khi dùng với nước tạo nhiều bọt.",
+        "uses": "Quả dùng thay thế bột giặt, nước rửa chén tự nhiên, an toàn môi trường.",
+        "care": "💧 Tưới đều khi cây còn nhỏ. ☀️ Ưa nắng. 🌱 Đất tơi xốp, chịu hạn tốt.",
+        "warning": "Chỉ dùng ngoài da hoặc giặt rửa, không được ăn quả vì có độc tính nhẹ."
+    },
+    "Chò Chỉ": {
+        "scientific_name": "Parashorea chinensis",
+        "description": "Cây gỗ lớn bản địa, có giá trị kinh tế và bảo tồn cao, quả có cánh bay trong gió.",
+        "characteristics": "Thân thẳng tắp, vút cao. Quả có 5 cánh mỏng bay như chong chóng.",
+        "uses": "Lấy gỗ xây dựng, bóng mát, phủ xanh đồi núi.",
+        "care": "💧 Cần nhiều nước khi non. ☀️ Ưa sáng. 🌱 Đất sâu, nhiều mùn.",
+        "warning": None
+    },
+    "Dã Quỳ": {
+        "scientific_name": "Tithonia diversifolia",
+        "description": "Loài cúc dại có hoa màu vàng rực, thường nhuộm vàng các sườn đồi.",
+        "characteristics": "Bụi cao, thân thảo có lông, hoa hình cúc lớn vươn cao.",
+        "uses": "Làm phân xanh bảo vệ sinh thái, trang trí cảnh quan.",
+        "care": "💧 Chịu hạn cực tốt. ☀️ Rất ưa nắng. 🌱 Mọc mạnh kể cả ở đất cằn cỗi.",
+        "warning": None
+    },
+    "Đinh Lăng Lá Tròn": {
+        "scientific_name": "Polyscias balfouriana",
+        "description": "Biến thể của đinh lăng có phong thuỷ tốt với lá tròn như đồng xu, thu hút tài lộc.",
+        "characteristics": "Lá tròn to, lốm đốm màu trắng/vàng ở viền, thân mềm nhỏ.",
+        "uses": "Cây cảnh trang trí nội thất, mang lại điểm nhấn sang trọng.",
+        "care": "💧 Tưới 2-3 lần/tuần. ☀️ Vị trí thoáng sáng tán xạ. 🌱 Đất giàu dinh dưỡng.",
+        "warning": None
+    },
+    "Đu Đủ": {
+        "scientific_name": "Carica papaya",
+        "description": "Cây ăn quả phổ biến cực kỳ bổ dưỡng, cho trái ngọt lịm.",
+        "characteristics": "Thân xốp cao thẳng, lá chia thuỳ mọc thành chùm trên ngọn.",
+        "uses": "Trái chín ăn tươi, trái xanh làm nộm hoặc dùng enzyme làm mềm thịt.",
+        "care": "💧 Tưới vừa phải, chú ý chống úng gốc. ☀️ Nắng trực tiếp cả ngày. 🌱 Đất màu mỡ.",
+        "warning": "Mủ cây có thể gây ngứa da; phụ nữ có thai hạn chế dùng trái xanh."
+    },
+    "Đủng Đỉnh": {
+        "scientific_name": "Caryota mitis",
+        "description": "Dòng họ cau dừa sở hữu lá dạng xé đuôi cá kì lạ.",
+        "characteristics": "Thân bụi, lá nhám như đuôi cá, chùm hoa và quả dài rủ thành dải.",
+        "uses": "Làm cảnh, điểm nhấn sân vườn phong cách châu Á.",
+        "care": "💧 Ưa nước, sinh trưởng trong môi trường độ ẩm cao. ☀️ Bóng mát rẽ nắng. 🌱 Đất ẩm.",
+        "warning": "Tuyệt đối không để nhựa quả chạm vào da, gây ngứa rát dữ dội."
+    },
+    "Đuôi Công": {
+        "scientific_name": "Calathea makoyana",
+        "description": "Dòng cây cảnh tinh tế đẳng cấp sở hữu hoạ tiết lá như tranh vẽ.",
+        "characteristics": "Mặt lá rực rỡ hoa văn giống đuôi chim công, mặt dưới tím tía.",
+        "uses": "Trang trí đẳng cấp văn phòng, không gian thiếu rọi sáng.",
+        "care": "💧 Giữ ẩm tốt, tránh để khô cong lá. ☀️ Phải tránh nắng gắt trực tiếp. 🌱 Đất thoáng.",
+        "warning": None
+    },
+    "Dương Xỉ": {
+        "scientific_name": "Nephrolepis exaltata",
+        "description": "Dòng cây từ nguyên thuỷ có tán xanh mượt, lọc không khí rất mạnh mẽ.",
+        "characteristics": "Lá kép mọc thành cụm uốn lượn cong đẹp mắt, xanh tươi.",
+        "uses": "Trang trí chậu treo, phủ nền tiểu cảnh, thanh lọc Formaldehyde.",
+        "care": "💧 Luôn giữ môi trường rễ mịn ẩm. ☀️ Bóng râm mát mẻ. 🌱 Có thể bám rêu, mục tơi.",
+        "warning": None
+    },
+    "Hoa Hồng": {
+        "scientific_name": "Rosa",
+        "description": "Nữ hoàng tuyệt sắc của muôn hoa, đại diện của Tình yêu nồng cháy.",
+        "characteristics": "Thân đầy gai bảo vệ, cánh hoa nhiều lớp đan xen, hương thơm ngây ngất.",
+        "uses": "Tặng quà, cắt cành thẩm mỹ, cất lấy chiết xuất tinh dầu thơm ngọt.",
+        "care": "💧 Tưới trực tiếp dưới phần gốc rễ. ☀️ Ưa nắng mạnh trên 6 tiếng/ngày. 🌱 Bón bằng phân sinh học.",
+        "warning": "Gai sắc rạch xước da; hoa cần phòng tránh trĩ và nhện đỏ cắn phá."
+    },
+    "Hoa Dừa Cạn": {
+        "scientific_name": "Catharanthus roseus",
+        "description": "Loài hoa chân phương nhưng lại chứa những hoạt chất kháng tế bào ung thư mạnh.",
+        "characteristics": "Hoa năm cánh nho nhỏ đủ màu, lá nhẵn ánh bóng xanh biếc.",
+        "uses": "Làm giàn hoa rực rỡ cảnh quan, chế thuốc chống bệnh bạch cầu.",
+        "care": "💧 Sinh mệnh bền dai với hạn. ☀️ Yêu cầu nhiều nắng. 🌱 Rất tự cường chịu trũng lầy và hạn.",
+        "warning": "Rất độc nếu nuốt vô bụng."
+    },
+    "Huyết Dụ": {
+        "scientific_name": "Cordyline fruticosa",
+        "description": "Khoác lên mình sắc đỏ tím mộng mơ nhưng ma mị, dân gian rất chuộng chấn yểm.",
+        "characteristics": "Thân vươn nhọn đâm thẳng như kiếm, màu đỏ tía cực kì hút ánh nhìn.",
+        "uses": "Làm cảnh, sắc vỏ/lá rễ đun thuốc nam nhằm cầm tiểu ra máu.",
+        "care": "💧 Tưới tần suất trung bình. ☀️ Gặp ánh nắng mới lên rực lửa màu đỏ. 🌱 Không cầu kì phân lót.",
+        "warning": None
+    },
+    "Cây Tre": {
+        "scientific_name": "Bambusoideae",
+        "description": "Đại diện linh hồn quê hương làng mạc với cốt cách nhẫn nại bền bỉ kiên cường.",
+        "characteristics": "Thân dạng ống lóng rỗng kết lại đàn đàn, sức sống mãnh liệt đâm chồi.",
+        "uses": "Măng ăn đắng ngọt xào, thân dựng làm nhà làm gậy cột uốn éo.",
+        "care": "💧 Phát triển tếu nhờ trời mưa rả rích. ☀️ Ánh nắng rọi thấu tự nhiên. 🌱 Đất bãi hoang trùn.",
+        "warning": None
+    },
+    "Cây Bàng": {
+        "scientific_name": "Terminalia catappa",
+        "description": "Tháng giêng đón lộc, hạ che ốm sương, thu rụng đơm vàng - Cây kỉ niệm học trò.",
+        "characteristics": "Cành xòe ra từng tán rộng bằng như che ô, quả bầu đục hạt giòn.",
+        "uses": "Che mát sân bãi, hạt chiết dầu rang. Khác: ngâm lá bàng chữa thuỷ sinh.",
+        "care": "💧 Chăm ban đầu. ☀️ Nhu cầu nắng rất nhiều để to lớn. 🌱 Sức sống cứng rắn.",
+        "warning": "Quét lá đợt thu rơi rụng khá mệt nhoài."
+    },
+    "Cây Chuối": {
+        "scientific_name": "Musa",
+        "description": "Lá biếc xanh buông thõng, buồng nặng cong trĩu vạn nải ngọt.",
+        "characteristics": "Nhiều bẹ lá giả ép dính, lá nguyên mượt bản cực đại xé bởi gió mưa.",
+        "uses": "Chế biến thực phẩm từ hoa, rễ, quả, lá chuối bó kẹo bánh.",
+        "care": "💧 Luôn đòi hỏi nước mát. ☀️ Nắng tự do. 🌱 Trống bùn tốt, phù sa đất bùn sét.",
+        "warning": "Cây chuối rất mềm thân rễ cạn dễ dập nát gió to."
+    },
+    "Cây Giấm": {
+        "scientific_name": "Hibiscus sabdariffa",
+        "description": "Bụp giấm, bụp chua vang dội thức trà hoa đỏ thẩm vạn người mê.",
+        "characteristics": "Thảo mộc đỏ cuống lá tới bông đài quấn quýt nhọn xòe.",
+        "uses": "Nhan sắc trà đài ngâm siro mứt kẹo giải khát, lợi trung giảm áp huyết.",
+        "care": "💧 Chốn cạn bám víu ít ẩm ướt dễ đậu quả hơn. ☀️ Hưởng trọn nắng hạ. 🌱 Bãi gò đồi ráo nước.",
+        "warning": None
+    },
+    "Cây Lan Nước": {
+        "scientific_name": "Echinodorus",
+        "description": "Vũ điệu thuỷ tề trầm bổng ở trong lồng kính bơi cùng cá chép.",
+        "characteristics": "Cây thích chìm hẳn ngập dưới dòng nước vươn rễ lá tung hoành.",
+        "uses": "Layout thuỷ sinh hồ tự nhiên, kích tuần hoàn sống.",
+        "care": "💧 Mãi chìm đáy hồ. ☀️ Trắng chiếu thuỷ sinh CO2 1 phần. 🌱 Chất nền dinh dưỡng sâu.",
+        "warning": None
+    },
+    "Cây Lá Lốt": {
+        "scientific_name": "Piper sarmentosum",
+        "description": "Mùi hương tẩm ướm khét lẹt nức mũi quyện trong bếp núc gia tộc.",
+        "characteristics": "Sần thô phủ gân nếp mặt lá trên, mềm tim rễ đan bò đất.",
+        "uses": "Nghi thức cuốn thịt chả hoặc nướng bếp, tiêu độc thống phong.",
+        "care": "💧 Ẩm liên tục để duy trì. ☀️ Lẩn khuất cực thích vào chỗ khuất râm ẩm hôi. 🌱 Đất bết nhiều mùn.",
+        "warning": None
+    },
+    "Cây Mít": {
+        "scientific_name": "Artocarpus heterophyllus",
+        "description": "Cây xù xì kết cành hàng loạt mang ruột gai trái múi vàng ươm mật ngào.",
+        "characteristics": "Trĩu vào cành mẹ quả to như chum vại gai dày, nhựa mủ trắng nhờn.",
+        "uses": "Xơi liền miệng tráng cốt gân no, làm chay các món, gỗ thi công miếu vàng mượt.",
+        "care": "💧 Nắng mưa tự khắc lớn phổng phao. ☀️ Cao chót vót hứng ánh dương soi. 🌱 Tựa rễ trụ cứng cáp.",
+        "warning": "Mủ mít dính dao dính tay khó tẩy, nên thoa ít dầu thoa chùi chanh gỡ. Gai vỏ nhọn đàng hoàng."
+    },
+    "Cây Ổi": {
+        "scientific_name": "Psidium guajava",
+        "description": "Ngát thơm toát vỏ, dồi dào dốc chứa C cực mạnh, ăn giải toả mỏi căng.",
+        "characteristics": "Vỏ xanh ruột đỏ/trắng ruột toả hương thơm ngọt gắt, lá sờ thâm ráp mùi riêng.",
+        "uses": "Múc nước ép dầm muối ngon đậm vị bụng, bẻ lá chát nhấm trị viêm dạ dày dứt bỉ.",
+        "care": "💧 Dễ chiều không chưng nề hà. ☀️ Quét rực đón nắng quang hợp chín cành. 🌱 Chê chua dễ thối rễ trũng phèn.",
+        "warning": None
+    },
+    "Cây Phong": {
+        "scientific_name": "Acer",
+        "description": "Chuyển sắc diễm tình chớm sắc đông lùa, xâu chuỗi màu ảo diệu trên phim tài liệu.",
+        "characteristics": "Lá răng cưa mũi giáo rách dọc rực cam - chu sa.",
+        "uses": "Làm phong linh bonsai chậu đá, trút chiết siro kẹo waffle mật lá.",
+        "care": "💧 Kén tưới đừng phun dã tật. ☀️ Đón chút nắng sáng cho đỏ mặt, râm mát chiều thu. 🌱 Yêu gò thoáng cao tơi rễ mọc đan chéo thoát cực lẹ.",
+        "warning": "Tại vùng nhiệt đới rất khó giữ sắc đỏ chuẩn nếu không đưa vào chỗ rét hạ độ ẩm."
+    },
+    "Cây Lưỡi Hổ": {
+        "scientific_name": "Sansevieria trifasciata",
+        "description": "Người hiệp sĩ đứng mũi chịu sào, nhả 1 khối O2 siêu to khổng lồ tận sâu bóng đêm ru ngủ sâu giấc.",
+        "characteristics": "Dũa thành mũi gươm dọc vươn đâm, viền hai mép viền nhũ đắp lóng lánh.",
+        "uses": "Khử bay Formaldehyde bốc ở gỗ nhà cửa, trán cửa ban công đón khí tài hung tránh dữ.",
+        "care": "💧 Bỏ quên hàng tháng chả tưới vẫn trơ gan đá. ☀️ Lẩn mình góc ngách chẳng ôi than chết đói. 🌱 Đất kiên gan pha tí đá nụ núi lởm.",
+        "warning": "Nhỡ miệng cắn thì chó mèo cũng đi toi bọt mép vì có tính kịch độc ngầm ruột gan."
+    },
+    "Cây Ngựa Vằn": {
+        "scientific_name": "Aphelandra squarrosa",
+        "description": "Lên sàn diễn rực hoạ gân sọc ngộ nghĩnh điên rồ rực lửa.",
+        "characteristics": "Dọc lá xanh biếc rọi đường chỉ sọc nõn, thân bế cụm pháo vàng ươm mào rực rỡ.",
+        "uses": "Khoe sắc phô trương nét quý phái chưng bày bàn VIP cất đặt trên nền rực tối.",
+        "care": "💧 Dính thuỷ mới sinh được nét vằn trơn láng nhợn nhợn, sấy khô là quắt ngay. ☀️ Bức rèm tránh nắng hun sém khét. 🌱 Đóng xơ xốp nhẹ hều nhốt ươm rễ phòi.",
+        "warning": None
+    },
+    "Cây Ráy": {
+        "scientific_name": "Alocasia macrorrhizos",
+        "description": "Cỡ xòe mâm đồng rộng khiếp như tai voi mọc rải bìa rừng hoang sơ thâm thấp.",
+        "characteristics": "Loanh quanh chân suối lớn rễ ngậm mọng củ chứa nước độc ngứa.",
+        "uses": "Kéo nét rừng Amazon dã thuật vào ngõ vườn, thỏi rễ đem nướng đắp bóp cạo phỏng.",
+        "care": "💧 Dội đẫm ầm ầm cũng chả ngán. ☀️ Trốn náu tàn cây khác cản bớt ánh nhật. 🌱 Đặc biệt mến bùn dăm nén.",
+        "warning": "Xin nhớ ngứa thấu tận tuỷ, cắn vào mồm gây trợt hầu niêm mạc lưỡi ngạt thở nghẹt chết não."
+    },
+    "Cây Sắn Dây": {
+        "scientific_name": "Pueraria montana",
+        "description": "Trùm phơi lá tít mù mịt lấp lối, ngọn leo nhanh tợ rồng xanh bòn củ mập ú sâu lòng.",
+        "characteristics": "Dây nhoà bám dai leo toả, củ sâu cực dốc, hoa bốc vị tím.",
+        "uses": "Nuốt ực bột mát xát lạnh thanh độc mát tuỷ gan, món chè dặm ăn vào xìu mệt.",
+        "care": "💧 Mặc xác đất trời tưới. ☀️ Lấn rọi trời xanh lấy đất lan toả bò leo.",
+        "warning": None
+    },
+    "Cây Thần Tài": {
+        "scientific_name": "Dracaena sanderiana",
+        "description": "Ống trúc lộc phát cuốn khoanh đồng tiền rước đại kiết hưng vượng phong.",
+        "characteristics": "Nhốt trong ống thân thon nón dài măng xanh bóng bện xoắn múa xèo tháp ngọc thạch tiền.",
+        "uses": "Buộc thắt nơ đón ban tài thổ thần ban của tiệm đắt hàng.",
+        "care": "💧 Thích ở nước trong vắt lội thay bình rót lại khoẻ. ☀️ Sợ tối mờ mịt sợ chói chan thiêu cháy nheo lá. 🌱 Đất cằn chỉ cần sờ tơi thoát nước chớ ngập rễ úng.",
+        "warning": "Mèo nhai một mớ có thể say lử đử bủn rủn tuôn nôn ọe."
+    },
+    "Cây Vạn Tuế": {
+        "scientific_name": "Cycas revoluta",
+        "description": "Gốc cổ sần xoắn trầm chạ bao uy dũng vững tựa hoàng bào bất diệt.",
+        "characteristics": "Gai cuống đâm nhọn quắc, vuốt nhọn phẩy như giang 1 đài lông chim dẻo.",
+        "uses": "Đứng gác tráng cửa ngõ chấn yểm cản ngự môn rào phong thuỷ toạ trạch.",
+        "care": "💧 Kiêng nước sũng chậu tát hết khô rồi mới đọng ẩm. ☀️ Dang nắng hun nóng rực chịu phơi. 🌱 Gốc bám dốc cạn nịch sỏi pha cứng cáp.",
+        "warning": "Ăn trúng hạt hay cắn ngọn vào mồm là dẫn tới hư gan liệt cơ hoảng sợ tuột não chết không kịp thở."
+    },
+    "Cây Bồ Đề": {
+        "scientific_name": "Ficus religiosa",
+        "description": "Soi bóng tựa mành che tâm tuệ phật quang an nhiên toạ thiền trút oán.",
+        "characteristics": "Chóp mũi hoắc như sợi dây chọc buông lơi, rễ lan trườn bão giáp siết trụ gân thân lớn bề thế.",
+        "uses": "Chấn linh từ am phật di tích tâm, che rợp sân mát toả.",
+        "care": "💧 Sức vươn cực bạo uống rào rào trút tát nước. ☀️ Đỉnh trời nắng hạ chiếu quàng ngọn đỉnh toả bóng. 🌱 Bất khuất lầm than mọi chất thổ bùn rã cứng.",
+        "warning": "Chớ để ươm trồng rễ ăn vỡ vụn bờ rào hỏng gạch rải xẻng nứt móng sập đường hỏng tuột."
+    },
+    "Hoa Cẩm Tú Cầu": {
+        "scientific_name": "Hydrangea macrophylla",
+        "description": "Mâm cầu diễm quỳnh trác tuyệt đổi màu theo lời đồn phép đo pH thần kiều.",
+        "characteristics": "Tuôn khát cụm cục mây hồng/nhung/tím lam xanh, ngàn nụ bông sát bên nhau tọ xoè lớn múa.",
+        "uses": "Bó tú cầu kiêu sa quà rước đón dâu rập rờn.",
+        "care": "💧 Khốc cực háo phàm nước lã không cho để héo quắt. ☀️ Bày chấn bóng thâm bán phần che chắn cạy nắng dội khô nứt nụ. 🌱 Trộn gỉ xỉ sắt đổi ra bông tím chua lam (Al), hạ rắc vôi bột lại trổ ra hoa phớt đào.",
+        "warning": "Có ngứa râm ran tay chân nếu vẩy vờn mặt lá lâu, nụ cánh nuốt trúng lộn mửa thốc xối đầy nguy hoạ."
+    },
+    "Cây Cọ Tòng": {
+        "scientific_name": "Codiaeum variegatum",
+        "description": "Màn pha sắc dải áo loang lổ sáp lụa lửa chập chững đỏ vàng phớt điệu hoang nhiệt đỏ.",
+        "characteristics": "Bóng ngậy trơn sáp, gân sọc ngòi trổ muôn hồng nhí vàng nghệ rạch lên diệp xanh bóng.",
+        "uses": "Bo rào kẽm viền hè, dải lối hoan nghênh.",
+        "care": "💧 Tưới độ đủ chẳng hạn úng ngập rữa rễ thối. ☀️ Hưởng trọn cực chiếu, rọi nắng nung rễ trổ gân tía ngời rực mạnh.",
+        "warning": "Tựa thầu dầu mủ cây chạm rát ngứa viêm dộp phát ban liếm trúng thì dạ dày oằn ọe rít co ngộ tuỷ."
+    },
+    "Hoa Dâm Bụt": {
+        "scientific_name": "Hibiscus rosa-sinensis",
+        "description": "Rực đỏ cánh lồng kiêu vũ thâm trầm lãng mạn trưa chói lửa đồi nhiệt đới.",
+        "characteristics": "Trĩu cuống vươn dài đỏ cờ uốn uốn vuốt nhẹ, cái nhị ngạo nghễ chõi ngoi vươn.",
+        "uses": "Trang hoa thêu viền rào thôn đình hoan mộng.",
+        "care": "💧 Tưới dầm tã hằng ban trưa gỡ khát hạn khô. ☀️ Lôi ra đón hực nắng 8 tiếng một vầng hoa ra rộn lẫy đỏ phau. 🌱 Phân trấu tơi ngục mục trùn quế tấp đống bốc màu sẫm dắn khoẻ.",
+        "warning": None
+    },
+    "Hoa Đỗ Quyên": {
+        "scientific_name": "Rhododendron",
+        "description": "Nở bừng trọn đoá nghinh xuân Tết hoan mộng bừng lửa sườn đồi lạnh Sa Pa sương sương.",
+        "characteristics": "Cành giòn củi uốn chồi nụ kết bón buốt toả tưng bừng xoè chuông ngũ 5 cánh loe.",
+        "uses": "Quà tặng trưng kệ ngày mừng, chưng bonsai cắt uốn.",
+        "care": "💧 Xịt phún mát sương tránh hắt nước vòi vào cánh nụ gây rã rũ hoa. ☀️ Chút râm mờ loang lổ xen khe cành tăm chẳng sờn nóng xém. 🌱 Cắm dất chua phèn vỏ thông bãi rêu lót ẩm cạn phân mạnh.",
+        "warning": "Kịch độc nếu húp hít mật sương tẩm trong tuyến hoa xẻ dập mật độc tuột áp nôn bốc co giật điếng đời thú chó chim người."
+    },
+    "Hoa Loa Kèn": {
+        "scientific_name": "Lilium longiflorum",
+        "description": "Hương đưa dìu dập lượn thổi dập đưa thuỷ tinh hoa ngà loa chuông thổi ca tháng Tư.",
+        "characteristics": "Đổ cuống một dọc cao kều lững thững loe trắng muốt xoè nhị gấm dài óng vàng tơ.",
+        "uses": "Bó mớ rổ quấn giỏ mây ngâm tinh lọc tráng nhã chưng cửa sổ mộc mạc thơm lồng.",
+        "care": "💧 Vẩy tưới nhẩn nha không thừa cữu gây mục nát củ thúi vứt luôn. ☀️ Bình minh hong tráng vầng rọi rạng mai nhè nhẹ đừng hong sém khét nắng quái đỏ. 🌱 Lá mùn tàn cấn tro tơi.",
+        "warning": "Xin né để lọt vô mồm con Mèo, chỉ một hạt nhị mím trúng nó tuột thận sùi chết xụi ngay tắp lự."
+    },
+    "Hoa Lựu": {
+        "scientific_name": "Punica granatum",
+        "description": "Viên thạch lựu ruby chín sần sù đơm hoa cam nung rực hầm chiếu vọt hừng góc vườn.",
+        "characteristics": "Lá thoi bóng dài vỏ sù rộp đượm bung búp 5 khía xoè bung nụ hoa nhăn giòn chói lọi rụng kết ngọc.",
+        "uses": "Uốn kiểng mâm lộc tết ra hoa đậu, lấy chép quả đập vỡ nhai mọng xót hạt giòn ngấu húp.",
+        "care": "💧 Đợi tạnh ráo nứt mặt vẩy tới tấp một phát ngấm cả. ☀️ Nực nội hong cháy phơi sướng mình đơm hoa mới nẩy chùm trĩu cong trượng gốc. 🌱 Sỏi khô sỏi xỉ đá dăm cát độn nhão rã.",
+        "warning": None
+    },
+    "Hoa Ly": {
+        "scientific_name": "Lilium",
+        "description": "Điệu nương dáng quý tộc phô hương xáp phảng nức phòng tết nhứt hoa huệ ngạo dâng rực loè uốn cong nhị phấn.",
+        "characteristics": "Uốn bật cánh bung bung cuộn vẫy chóp chóp chấm bi hương thơm xốc vào ngực nghẹt quyến rũ.",
+        "uses": "Múc rực cắm bình đắt ngợp hoa cành sang chiết chiêu dụ vượng gia.",
+        "care": "💧 Từ tốn gõ rót từng giọt đều thấm rễ. ☀️ Sợ sốc sợ hầm nóng sợ rọi héo. Sống lạnh. 🌱 Chuẩn đất khoáng tơi băm xơ xả bã.",
+        "warning": "Xin lại nhớ Cấm Tuyệt đối rụng rắc phấn ly quanh mèo cưng kẻo rước vạ thận khôn lường tuột chết oan mạng mèo nha."
+    },
+    "Hoa Ngọc Bút": {
+        "scientific_name": "Tabernaemontana divaricata",
+        "description": "Kết xoáy chóp nụ bông búp ngòi bút thơm ngát hương nhài mướt mát đệm phơi trăng.",
+        "characteristics": "Lá sáp trơn bóng chùm đoá búp quấn cuốn xoắn óc xòe bung trắng mướt êm điềm tựa lụa.",
+        "uses": "Uốn hình rào cảnh hàng hiên thơm phảng châm thuốc y nam chữa phong mắt tuỷ ho hen.",
+        "care": "💧 Tấp nập rót đằm không nghẹt rữa là đủ. ☀️ Xiên xéo rọi hừng bình trưa chiều mát xéo. 🌱 Tro trấu bùn rác tơi quấn mục quế đen.",
+        "warning": "Ngắt cành nứt mủ trắng nếm đau rát nhợn vồn nôn chớ bỏ miệng chớ dây mắt."
+    },
+    "Hoa Sim": {
+        "scientific_name": "Rhodomyrtus tomentosa",
+        "description": "Lăn lóc gai góc sim tím lịm mộng mị rực rỡ trồi lấp lánh nương đồi cằn khô hạn.",
+        "characteristics": "Vuốt bụi thấp nhấp nhô mốc khô vẩy rực 5 cánh láng nhẵn tím tía nhị mảnh tua rủa bay vù.",
+        "uses": "Săn giữ đồn cát chẻ nứt ruột trĩu quả chín rệu dầm vại hũ ủ rượu thơm dạt.",
+        "care": "💧 Trời thương cho mưa đất dưỡng. Chứ khô cong sỏi sờn chả thiết uống. ☀️ Ngậm nắng cháy đen xù đá phơi chói chang nướng tĩ. 🌱 Phèn đá sỏi chua cật đất xám xấu mốc mù.",
+        "warning": None
+    },
+    "Hoa Hồng Môn": {
+        "scientific_name": "Anthurium andraeanum",
+        "description": "Chắp cánh cờ tim đỏ lự êm sáp nổi rực giữa vũng bóng tối xua tà hung nạp khí kim.",
+        "characteristics": "Trót mặt da láng o, bông vươn vòi thẳng ngòi phẩy ngúng nguẩy giữa thớt tim choé bóng nhẫy.",
+        "uses": "Mặt tiền lóng lánh kiêu diện công sở vượng lộc bình phong khử tà máy photo độc hại.",
+        "care": "💧 Tưới lá rửa sương đằm gốc đừng châm ướt nghẽn. ☀️ Sụp sệt tối mờ mát rượi ánh đèn hắt gián rọi hắt nhẹ sượt râm hiên cọ. 🌱 Vỏ đay thông sợi than trấu ải dăm mục xếp đống tơi đan rể thở sâu.",
+        "warning": "Nhai rập phát dính Oxalate kim tăm găm xiên cuống họng rát hoả lở nhức tột độ chớ bỡn nhón súc."
+    },
+    "Cây Sò Huyết": {
+        "scientific_name": "Tradescantia spathacea",
+        "description": "Thuyền xuôi bến lượn lá mác nhọn xanh sẫm thảm tía ngậm nụ kín bưng khép vò trai lẩn lút.",
+        "characteristics": "Dọc lá giương thẳng đâm ngang trổ màu máu tía cất giấu ẵm nụ nhí trắng ngần rúc vỏ sò khép lá.",
+        "uses": "Loang sắc phối luống dải dọc lối, giã nhuyễn múc chiết cầm ho lao nhuận thở huyết khan.",
+        "care": "💧 Chiều lòng dẫu úng dẫu khô đều ráng nhoài bò trụ lấp mọc con nể sống nhăn. ☀️ Vượt nắng phơi gắt tía tím rực, nép bóng rợp phai tía phai phớt mốc xanh xao. 🌱 Trộn đất phế đục phá tàn mùn gỉ đá chùi cũng trồi xé bò lan tĩ tã.",
+        "warning": "Mủ xước rỉ nhầy nhăm nhắp kích dị ngứa nhẹ da tổn cẩn mật chớ híp dụi trúng mi mắt xót cay."
+    },
+    "Cây Ngọc Ngân": {
+        "scientific_name": "Aglaonema costatum",
+        "description": "Cặp tình chắp uyên ương lốm đốm nốt xanh lặn lộn vùng sáng sữa trắng trang nhã điềm an nhàn dịu.",
+        "characteristics": "Vươn mặt lá xoáy đốm vệt mài sáp trắng sữa đờ loang kín viền xanh sẫm rìa rãnh vây mướt trần.",
+        "uses": "Nâng quà tri ân lẵng lễ kỉ thuỷ sinh chưng diện lộc phúc sinh phồn rạng rỡ phong nhã trang chắp.",
+        "care": "💧 Ướt nước trong rễ phòi sục chớ đục để thay mới bùn cắm 2 ngày châm hớp lót tĩ. ☀️ Chói loà gắt thiêu hỏng thui lá trắng rạn hủ, cần khe mành nương sáng phản nhẹ lướt phẩy vào mờ rực. 🌱 Xăm nhão mủn vụn vỏ tráng tro cưa tẩm vớt nổi.",
+        "warning": "Nhỡ dại rước vô thú cưng cắn vào miệng ngậm phải hoá kích thắt hầu lở dạ xuất oẹ đau co trào bọt mím mửa."
+    }
+}
+
+
+def _get_plant_info(plant_name: str) -> dict:
+    """
+    Tra cứu thông tin đầy đủ cho loài cây từ PLANT_DATABASE.
+    Fallback về thông tin mặc định nếu không tìm thấy.
+    """
+    for key, info in PLANT_DATABASE.items():
+        if key.lower() in plant_name.lower() or plant_name.lower() in key.lower():
+            return info
+    # Fallback chung
+    return {
+        "scientific_name": None,
+        "description": (
+            f"**{plant_name}** là loài thực vật đặc sắc trong hệ thống nhận diện Flower Note. "
+            "Hãy tham khảo thêm tài liệu chuyên ngành hoặc Google Lens để biết thêm thông tin."
+        ),
+        "characteristics": None,
+        "uses": None,
+        "care": None,
+        "warning": None,
+    }
+
+
+def _load_labels() -> list[str]:
+    """
+    Đọc file labels.txt và trả về danh sách tên loài theo thứ tự class index.
+
+    Hỗ trợ 2 định dạng:
+        • "0: Tên cây"  (có số thứ tự)
+        • "Tên cây"     (chỉ tên, mỗi hàng một lớp)
+    """
+    if not LABELS_PATH.exists():
+        logger.warning("⚠️  Không tìm thấy labels.txt – dùng nhãn mặc định Class_0..49.")
+        return [f"Class_{i}" for i in range(50)]
+
+    labels: list[str] = []
+    with open(LABELS_PATH, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            # Dạng "42: Tên cây" → lấy phần sau dấu ": "
+            if ": " in line:
+                labels.append(line.split(": ", 1)[1].strip())
+            else:
+                labels.append(line)
+
+    logger.info("📋 Đọc labels.txt: %d nhãn.", len(labels))
+    return labels
+
+
+# ─────────────────────────── PlantPredictor ──────────────────────────────────
+class PlantPredictor:
+    """
+    Singleton wrapper quanh model YOLOv8 (ultralytics).
+
+    Workflow:
+        1. __init__: load best.pt một lần.
+        2. preprocess: raw bytes → PIL Image.
+        3. predict: PIL Image → YOLO inference → hậu xử lý → dict kết quả.
+
+    NMS được ultralytics xử lý nội bộ (tham số `iou`).
+    """
+
+    _instance: Optional["PlantPredictor"] = None
+
+    def __init__(self) -> None:
+        logger.info("⏳ Đang load model YOLOv8 từ: %s", MODEL_PATH)
+
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"❌ Không tìm thấy file model tại: {MODEL_PATH}\n"
+                "👉 Hãy copy file best.pt vào thư mục backend/ rồi khởi động lại server."
+            )
+
+        # load model – ultralytics tự chọn CPU/CUDA
+        self.model  = YOLO(str(MODEL_PATH))
+        self.labels = _load_labels()
+        logger.info("✅ Model load thành công. Số lớp: %d", len(self.labels))
+
+    # ── Tiền xử lý ───────────────────────────────────────────────────────────
+    @staticmethod
+    def preprocess(image_bytes: bytes) -> Image.Image:
+        """
+        Chuyển đổi raw bytes → PIL Image RGB.
+        Pre-resize xuống 640×640 max để giảm I/O khi YOLO đọc ảnh lớn.
+        """
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            # ⚡ Pre-resize nếu ảnh > 640px giúp YOLO nhanh hơn
+            if max(img.width, img.height) > 640:
+                img.thumbnail((640, 640), Image.LANCZOS)
+        except Exception as exc:
+            raise ValueError(f"Không thể mở ảnh: {exc}") from exc
+        return img
+
+    # ── Inference chính ───────────────────────────────────────────────────────
+    def predict(self, image_bytes: bytes, conf_threshold: float = 0.25) -> dict:
+        """
+        Chạy YOLOv8 inference và trả về kết quả tốt nhất.
+
+        Parameters
+        ----------
+        image_bytes : bytes
+            Nội dung file ảnh thô (JPG/PNG/WEBP).
+        conf_threshold : float
+            Ngưỡng confidence tối thiểu (0–1), mặc định 0.25.
+
+        Returns
+        -------
+        dict
+            {
+                "plant_name": str,
+                "confidence": float,
+                "description_placeholder": str,
+                "bbox": [x1,y1,x2,y2] | None,   # tọa độ chuẩn hóa 0–1
+                "all_detections": list[dict],
+            }
+        """
+        img = self.preprocess(image_bytes)
+
+        # ── Chạy inference với NMS tích hợp sẵn ──────────────────────────────
+        # imgsz=320: nhanh hơn ~4x so với 640 trên CPU, ít ảnh hưởng accuracy
+        # max_det=10: không cần nhiều hơn 10 bounding box cho 1 ảnh
+        results = self.model.predict(
+            source=img,
+            conf=conf_threshold,   # lọc bbox dưới ngưỡng này
+            iou=0.45,              # IoU threshold cho NMS
+            imgsz=320,             # ⚡ CPU nhanh hơn ~4x so với 640
+            verbose=False,         # tắt log ultralytics
+            agnostic_nms=True,     # NMS chung tất cả lớp → ít bbox rác hơn
+            max_det=10,            # tối đa 10 detection / ảnh
+        )
+
+        result = results[0]  # batch size = 1
+
+        # ── Không có detection nào ────────────────────────────────────────────
+        if result.boxes is None or len(result.boxes) == 0:
+            return {
+                "plant_name": "Không xác định",
+                "confidence": 0.0,
+                "description_placeholder": (
+                    "🔍 Không phát hiện được loài cây nào trong ảnh. "
+                    "Hãy thử: chụp gần hơn, đảm bảo đủ ánh sáng, và ảnh không bị mờ."
+                ),
+                "scientific_name": None,
+                "characteristics": None,
+                "uses": None,
+                "care": None,
+                "warning": None,
+                "bbox": None,
+                "all_detections": [],
+            }
+
+        # ── Lấy bbox có confidence cao nhất ──────────────────────────────────
+        boxes   = result.boxes
+        confs   = boxes.conf.cpu().numpy()              # shape (N,)
+        classes = boxes.cls.cpu().numpy().astype(int)   # shape (N,)
+        xyxyn   = boxes.xyxyn.cpu().numpy()             # shape (N, 4) – chuẩn hóa 0–1
+
+        best_idx  = int(np.argmax(confs))
+        best_conf = float(confs[best_idx])
+        best_cls  = int(classes[best_idx])
+        best_box  = xyxyn[best_idx].tolist()            # [x1, y1, x2, y2]
+
+        # Lấy tên cây từ danh sách nhãn
+        plant_name = (
+            self.labels[best_cls]
+            if 0 <= best_cls < len(self.labels)
+            else f"Class_{best_cls}"
+        )
+
+        # Tra cứu thông tin chi tiết từ PLANT_DATABASE
+        plant_info = _get_plant_info(plant_name)
+
+        # Tất cả detections (để frontend vẽ bounding box và hiển thị thông tin)
+        all_detections = []
+        for i in range(len(confs)):
+            det_name = (
+                self.labels[int(classes[i])]
+                if int(classes[i]) < len(self.labels)
+                else f"Class_{classes[i]}"
+            )
+            det_info = _get_plant_info(det_name)
+            all_detections.append({
+                "class_id":   int(classes[i]),
+                "plant_name": det_name,
+                "confidence": float(round(confs[i], 4)),
+                "bbox":       xyxyn[i].tolist(),
+                "scientific_name":         det_info.get("scientific_name"),
+                "description_placeholder": det_info.get("description", ""),
+                "characteristics":         det_info.get("characteristics"),
+                "uses":                    det_info.get("uses"),
+                "care":                    det_info.get("care"),
+                "warning":                 det_info.get("warning"),
+            })
+
+        return {
+            "plant_name":              plant_name,
+            "confidence":              round(best_conf, 4),
+            "description_placeholder": plant_info.get("description", ""),
+            "scientific_name":         plant_info.get("scientific_name"),
+            "characteristics":         plant_info.get("characteristics"),
+            "uses":                    plant_info.get("uses"),
+            "care":                    plant_info.get("care"),
+            "warning":                 plant_info.get("warning"),
+            "bbox":                    best_box,
+            "all_detections":          all_detections,
+        }
+
+
+# ── Singleton accessor ────────────────────────────────────────────────────────
+def get_predictor() -> PlantPredictor:
+    """
+    Trả về instance duy nhất của PlantPredictor (lazy initialization).
+    Thread-safe trong môi trường uvicorn asyncio.
+    """
+    if PlantPredictor._instance is None:
+        PlantPredictor._instance = PlantPredictor()
+    return PlantPredictor._instance
+
