@@ -20,6 +20,7 @@ import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 
@@ -122,14 +123,17 @@ app = FastAPI(
 )
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
+# ✅ CORS lật lá (*) cho phép tất cả domain, bao gồm ngrok. 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # ✅ Nỗ làm cho ngrok hoàt động
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ✅ FRONTEND_PATH sẽ được mount VÀO CUỐI (sau tất cả API endpoints)
+FRONTEND_PATH = Path(__file__).parent.parent / "frontend"
 
 # ────────────────────────── Pydantic Schemas ─────────────────────────────────
 class Detection(BaseModel):
@@ -169,7 +173,7 @@ class HistoryDetail(HistoryItem):
 
 # ──────────────────────────── Endpoints ──────────────────────────────────────
 
-@app.get("/", tags=["Health"])
+@app.get("/api/", tags=["Health"])
 async def root():
     return {"status": "ok", "message": "🌸 Flower Note API v3 đang hoạt động!"}
 
@@ -187,6 +191,7 @@ async def health():
         "status": "ready",
         "num_classes": len(predictor.labels),
         "labels_sample": predictor.labels[:5],
+        "frontend_available": FRONTEND_PATH.exists(),
     }
 
 
@@ -421,4 +426,14 @@ async def get_plant_detail(plant_id: str):
     else:
         logger.warning(f"⚠️ Plant detail not found for: {plant_id}")
         raise HTTPException(status_code=404, detail=f"Không tìm thấy dữ liệu cho loài cây id: {plant_id}")
+
+
+# ── STATIC FILES (Frontend) - MOUNT VÀO CUỐI sau tất cả API endpoints ────────
+# ✅ Mount frontend folder để serve HTML/CSS/JS qua ngrok
+# ⚠️ PHẢI đặt CUỐI cùng vì static files mount sẽ intercept tất cả requests không match endpoints
+if FRONTEND_PATH.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_PATH), html=True), name="frontend")
+    logger.info(f"✅ Frontend mounted tại {FRONTEND_PATH}")
+else:
+    logger.warning(f"⚠️ Frontend folder không tìm thấy tại {FRONTEND_PATH}")
 

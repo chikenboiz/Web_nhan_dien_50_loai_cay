@@ -20,14 +20,28 @@
 /* ════════════════════════════════════════════════
    CONFIGURATION
 ════════════════════════════════════════════════ */
+// Auto-detect API base URL (localhost or ngrok)
+const getAPIBase = () => {
+  const url = new URL(window.location.href);
+  // If accessing via ngrok or custom domain, use it as base
+  if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+    return `${url.protocol}//${url.host}`;
+  }
+  // Otherwise use localhost:8000
+  return 'http://localhost:8000';
+};
+
+const API_BASE = getAPIBase();
+
 const CONFIG = {
-  API_BASE:    'http://localhost:8000',
-  API_PREDICT: 'http://localhost:8000/api/predict',
-  API_HEALTH:  'http://localhost:8000/api/health',
-  API_HISTORY: 'http://localhost:8000/api/history',
+  API_BASE:    API_BASE,
+  API_PREDICT: `${API_BASE}/api/predict`,
+  API_HEALTH:  `${API_BASE}/api/health`,
+  API_HISTORY: `${API_BASE}/api/history`,
   MAX_FILE_MB: 10,
   CONF_DEFAULT: 0.25,
   HEALTH_INTERVAL_MS: 30_000,
+  FETCH_TIMEOUT: 60_000,  // 60 seconds for slower ngrok connections
 };
 
 /* ════════════════════════════════════════════════
@@ -80,10 +94,7 @@ function updateTheme(themeType) {
   
   const config = THEME_CONFIG[themeType];
   
-  // Update static icons
-  const mainLogo = $('main-logo-emoji');
-  if (mainLogo) mainLogo.textContent = config.mainEmoji;
-  
+  // Update static icons (skip main-logo-emoji as it's now an image)
   const loadingEmoji = $('loading-emoji');
   if (loadingEmoji) loadingEmoji.textContent = config.mainEmoji;
   
@@ -185,39 +196,6 @@ const btnCapture    = $('btn-capture');
 const webcamCanvas  = $('webcam-canvas');
 const urlInput      = $('url-input');
 
-// ── XỬ LÝ ĐỔI TAB NGUỒN ẢNH ──
-uploadTabBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    const mode = btn.dataset.upmode;
-    if (mode === currentInputMode) return;
-    currentInputMode = mode;
-
-    uploadTabBtns.forEach(b => {
-      const active = b.dataset.upmode === mode;
-      b.classList.toggle('active', active);
-      b.setAttribute('aria-selected', active);
-    });
-
-    uploadPanels.forEach(p => {
-      p.classList.toggle('active', p.id === `upanel-${mode}`);
-    });
-
-    if (mode === 'webcam') {
-      startWebcam();
-    } else {
-      stopWebcam();
-    }
-
-    // Reset preview
-    resetState();
-    if (mode === 'url') {
-      btnHintText.textContent = '💡 Dán địa chỉ hình ảnh (URL) và nhấn Nhận diện ngay';
-    } else if (mode === 'webcam') {
-      btnHintText.textContent = '💡 Hãy cười lên và chụp một bức ảnh nào!';
-    }
-  });
-});
-
 async function startWebcam() {
   try {
     webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -225,8 +203,26 @@ async function startWebcam() {
     webcamOverlay.classList.add('hidden');
   } catch (err) {
     console.error('Lỗi Webcam:', err);
-    webcamOverlay.innerHTML = '<i class="fa-solid fa-triangle-exclamation fa-2x"></i><p>Không thể bật camera</p>';
-    showToast('❌ Vui lòng cấp quyền truy cập Camera!', 'error');
+    let errorMsg = 'Không thể bật camera';
+    let toastMsg = '❌ Vui lòng cấp quyền truy cập Camera!';
+    
+    // Better error messages based on error type
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      errorMsg = 'Quyền truy cập bị từ chối';
+      toastMsg = '❌ Bạn đã từ chối quyền truy cập camera. Vui lòng cho phép trong cài đặt!';
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      errorMsg = 'Không tìm thấy camera';
+      toastMsg = '❌ Thiết bị không có camera hoặc camera bị sử dụng bởi ứng dụng khác!';
+    } else if (err.name === 'NotReadableError') {
+      errorMsg = 'Camera đang bị sử dụng';
+      toastMsg = '❌ Camera đang được ứng dụng khác sử dụng. Hãy tắt nó và thử lại!';
+    } else if (err.name === 'SecurityError') {
+      errorMsg = 'Vấn đề bảo mật';
+      toastMsg = '❌ Truy cập camera bị chặn do vấn đề bảo mật. Hãy dùng HTTPS hoặc localhost!';
+    }
+    
+    webcamOverlay.innerHTML = `<i class="fa-solid fa-triangle-exclamation fa-2x"></i><p>${errorMsg}</p>`;
+    showToast(toastMsg, 'error');
   }
 }
 
@@ -242,32 +238,12 @@ function stopWebcam() {
   }
 }
 
-if (btnCapture) {
-  btnCapture.addEventListener('click', () => {
-    if (!webcamStream) return;
-    webcamCanvas.width = webcamVideo.videoWidth;
-    webcamCanvas.height = webcamVideo.videoHeight;
-    const ctx = webcamCanvas.getContext('2d');
-    
-    // Vì video bị css scaleX(-1) nên khi vẽ lên canvas nếu muốn giống hệt css thì làm tương tự:
-    ctx.translate(webcamCanvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
-    
-    webcamCanvas.toBlob(blob => {
-      const file = new File([blob], `webcam_${Date.now()}.jpg`, { type: 'image/jpeg' });
-      handleFile(file);
-      showToast('📸 Đã chụp xong, nhấn "Nhận diện ngay" nhé!');
-    }, 'image/jpeg', 0.9);
-  });
-}
-
 /* ════════════════════════════════════════════════
    HEALTH CHECK
 ════════════════════════════════════════════════ */
 async function checkHealth() {
   try {
-    const res   = await fetch(CONFIG.API_HEALTH, { signal: AbortSignal.timeout(5000) });
+    const res   = await fetch(CONFIG.API_HEALTH, { signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT) });
     const data  = await res.json();
     const ready = res.ok && data.status === 'ready';
     statusDot.className   = ready ? 'fa-solid fa-circle online' : 'fa-solid fa-circle offline';
@@ -317,8 +293,6 @@ document.addEventListener('paste', (e) => {
     if (item.kind === 'file' && item.type.startsWith('image/')) { handleFile(item.getAsFile()); break; }
   }
 });
-
-removeImgBtn.addEventListener('click', (e) => { e.stopPropagation(); resetState(); });
 
 function handleFile(file) {
   const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
@@ -388,30 +362,23 @@ function spawnHearts() {
 /* ════════════════════════════════════════════════
    MAIN PREDICT FLOW
 ════════════════════════════════════════════════ */
-btnPredict.addEventListener('click', async () => {
-  if (currentInputMode === 'url') {
-    if (!urlInput.value.trim()) { showToast('🔗 Vui lòng dán đường dẫn ảnh!', 'error'); urlInput.focus(); return; }
-  } else {
-    if (!currentFile) { showToast('🌸 Vui lòng chọn ảnh trước nhé!', 'error'); return; }
-  }
-  await runPrediction();
-});
 
-btnRepredict.addEventListener('click', async () => {
-  if (currentInputMode === 'url' && urlInput.value.trim()) await runPrediction();
-  else if (currentFile) await runPrediction();
-});
-
-btnRetry.addEventListener('click', () => {
-  resetState();
-  if (currentInputMode === 'file') {
-    dropZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => dropZone.focus(), 400);
-  } else if (currentInputMode === 'url') {
-    urlInput.value = '';
-    urlInput.focus();
+// Add touch feedback for mobile users
+function addTouchFeedback(btn) {
+  if (!btn) {
+    console.warn('[addTouchFeedback] Button is null!');
+    return;
   }
-});
+  console.log('[addTouchFeedback] Adding feedback to:', btn.id);
+  btn.addEventListener('touchstart', () => {
+    console.log('[touch] touchstart on', btn.id);
+    btn.style.opacity = '0.7';
+  });
+  btn.addEventListener('touchend', () => {
+    console.log('[touch] touchend on', btn.id);
+    btn.style.opacity = '1';
+  });
+}
 
 async function runPrediction() {
   setLoading(true);
@@ -436,7 +403,11 @@ async function runPrediction() {
 
   try {
     clearResults();
-    const response = await fetchPromise;
+    // Wrap fetchPromise with timeout
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout: Server phản hồi quá lâu (>60s). Kiểm tra kết nối mạng!')), CONFIG.FETCH_TIMEOUT)
+    );
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.detail || `Lỗi HTTP ${response.status}`);
@@ -449,7 +420,9 @@ async function runPrediction() {
   } catch (err) {
     console.error('[Flower Note] Predict error:', err);
     if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      showToast('❌ Không kết nối được server. Hãy kiểm tra lại backend!', 'error');
+      showToast('❌ Không kết nối được server. Kiểm tra backend đã chạy và ngrok URL đúng chưa?', 'error');
+    } else if (err.message.includes('Timeout')) {
+      showToast(`❌ ${err.message}`, 'error');
     } else {
       showToast(`❌ ${err.message}`, 'error');
     }
@@ -903,16 +876,159 @@ window.addEventListener('resize', () => {
 /* ════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════ */
+
+function setupEventListeners() {
+  console.log('[setupEventListeners] Starting...');
+  
+  // ── PREDICT BUTTONS ──
+  if (btnPredict) {
+    btnPredict.addEventListener('click', async () => {
+      console.log('[Event] btnPredict clicked');
+      if (currentInputMode === 'url') {
+        if (!urlInput.value.trim()) { showToast('🔗 Vui lòng dán đường dẫn ảnh!', 'error'); urlInput.focus(); return; }
+      } else {
+        if (!currentFile) { showToast('🌸 Vui lòng chọn ảnh trước nhé!', 'error'); return; }
+      }
+      console.log('[Event] Starting prediction...');
+      await runPrediction();
+    });
+    addTouchFeedback(btnPredict);
+    console.log('✅ btnPredict listeners attached');
+  }
+
+  if (btnRepredict) {
+    btnRepredict.addEventListener('click', async () => {
+      console.log('[Event] btnRepredict clicked');
+      if (currentInputMode === 'url' && urlInput.value.trim()) await runPrediction();
+      else if (currentFile) await runPrediction();
+    });
+    addTouchFeedback(btnRepredict);
+    console.log('✅ btnRepredict listeners attached');
+  }
+
+  if (btnRetry) {
+    btnRetry.addEventListener('click', () => {
+      console.log('[Event] btnRetry clicked');
+      resetState();
+      if (currentInputMode === 'file') {
+        dropZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => dropZone.focus(), 400);
+      } else if (currentInputMode === 'url') {
+        urlInput.value = '';
+        urlInput.focus();
+      }
+    });
+    addTouchFeedback(btnRetry);
+    console.log('✅ btnRetry listeners attached');
+  }
+
+  // ── TAB BUTTONS ──
+  console.log('[setupEventListeners] uploadTabBtns found:', uploadTabBtns.length);
+  uploadTabBtns.forEach(btn => {
+    console.log('[setupEventListeners] Adding click listener to tab:', btn.dataset.upmode);
+    btn.addEventListener('click', () => {
+      console.log('[Event] Tab clicked:', btn.dataset.upmode);
+      const mode = btn.dataset.upmode;
+      if (mode === currentInputMode) return;
+      currentInputMode = mode;
+
+      uploadTabBtns.forEach(b => {
+        const active = b.dataset.upmode === mode;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active);
+      });
+
+      uploadPanels.forEach(p => {
+        p.classList.toggle('active', p.id === `upanel-${mode}`);
+      });
+
+      if (mode === 'webcam') {
+        console.log('[Event] Starting webcam...');
+        startWebcam();
+      } else {
+        console.log('[Event] Stopping webcam...');
+        stopWebcam();
+      }
+
+      resetState();
+      if (mode === 'url') {
+        btnHintText.textContent = '💡 Dán địa chỉ hình ảnh (URL) và nhấn Nhận diện ngay';
+      } else if (mode === 'webcam') {
+        btnHintText.textContent = '💡 Hãy cười lên và chụp một bức ảnh nào!';
+      }
+    });
+    addTouchFeedback(btn);
+  });
+  console.log('✅ Tab buttons listeners attached');
+
+  // ── CAPTURE BUTTON ──
+  if (btnCapture) {
+    btnCapture.addEventListener('click', () => {
+      console.log('[Event] btnCapture clicked');
+      if (!webcamStream) return;
+      webcamCanvas.width = webcamVideo.videoWidth;
+      webcamCanvas.height = webcamVideo.videoHeight;
+      const ctx = webcamCanvas.getContext('2d');
+      
+      ctx.translate(webcamCanvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
+      
+      webcamCanvas.toBlob(blob => {
+        const file = new File([blob], `webcam_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        handleFile(file);
+        showToast('📸 Đã chụp xong, nhấn "Nhận diện ngay" nhé!');
+      }, 'image/jpeg', 0.9);
+    });
+    addTouchFeedback(btnCapture);
+    console.log('✅ btnCapture listeners attached');
+  }
+
+  // ── OTHER BUTTONS ──
+  if (removeImgBtn) {
+    removeImgBtn.addEventListener('click', (e) => { 
+      console.log('[Event] removeImgBtn clicked');
+      e.stopPropagation(); 
+      resetState(); 
+    });
+    addTouchFeedback(removeImgBtn);
+    console.log('✅ removeImgBtn listeners attached');
+  }
+
+  console.log('[setupEventListeners] ✅ ALL EVENT LISTENERS ATTACHED');
+}
+
 (function init() {
+  console.log('%c🌸 FLOWER NOTE INITIALIZING...', 'color: #FF6B8B; font-weight: bold; font-size: 14px;');
+  
+  console.log('✅ Setting up event listeners...');
+  setupEventListeners();
+  
   startHealthCheck();
+  console.log('✅ Health check started');
+  
   previewContainer.style.display = 'none';
   hideResult();
+  console.log('✅ UI initialized');
+  
   loadHistory();   // Tải lịch sử khi mở trang
+  console.log('✅ History loaded');
+  
   updateTheme('leaf'); // Mặc định chuyển sang nature theme khi bắt đầu
+  console.log('✅ Theme updated');
 
   console.info(
     `%c${THEME_CONFIG[currentTheme].mainEmoji} Flower Note v3.0 %c– Dynamic Nature Themes`,
     `background:${THEME_COLORS[currentTheme].stroke};color:#fff;padding:4px 10px;border-radius:6px;font-weight:800;`,
     'color:var(--c-theme-600);font-weight:600;'
   );
+  
+  console.log('%c✅ ALL SYSTEMS READY! Use your browser console for debugging.', 'color: #4CAF50; font-weight: bold; font-size: 12px;');
+  console.log('Buttons ready:', {
+    btnPredict: !!btnPredict,
+    btnRepredict: !!btnRepredict,
+    btnRetry: !!btnRetry,
+    btnCapture: !!btnCapture,
+    uploadTabBtns: uploadTabBtns.length
+  });
 })();

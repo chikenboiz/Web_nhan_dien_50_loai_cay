@@ -106,7 +106,7 @@
     <!-- Logo -->
     <div class="logo-wrap">
       <div class="logo-ring" id="logo-icon" aria-label="Logo Flower Note">
-        <span class="logo-emoji" id="main-logo-emoji">🌿</span>
+        <img id="main-logo-emoji" src="vnuf_logo.jpg" alt="VNUF Logo" class="logo-image" />
         <div class="logo-glow"></div>
       </div>
     </div>
@@ -119,7 +119,7 @@
           <div class="bubble" style="animation-delay: 0.2s">🌸</div>
           <div class="bubble" style="animation-delay: 0.4s">🍃</div>
         </div>
-        <h1>Flower Note</h1>
+        <h1>Web nhận diện thực vật VNUF</h1>
         <div class="bubble-group bubble-right">
           <div class="bubble" style="animation-delay: 0.1s">🌺</div>
           <div class="bubble" style="animation-delay: 0.3s">🍀</div>
@@ -128,7 +128,7 @@
       </div>
       <p class="tagline">
         <span class="emoji-icon">🌿</span>
-        Nhận diện <strong>50 loài cây</strong> thông minh bằng AI
+        Nhận diện <strong>các loài thực vật</strong> tại VNUF
         <span class="emoji-icon">✨</span>
       </p>
     </div>
@@ -228,10 +228,11 @@
             <i class="fa-solid fa-camera fa-2x"></i>
             <p>Đang bật camera...</p>
           </div>
-        </div>
-        <div class="webcam-actions">
-          <button id="btn-capture" class="btn-action">
-            <i class="fa-solid fa-camera"></i> Chụp ảnh
+
+          <!-- Nút chụp ảnh nằm bên trong container để luôn hiển thị trên mobile -->
+          <button id="btn-capture" class="btn-capture-floating">
+            <i class="fa-solid fa-camera"></i>
+            <span>Chụp ảnh</span>
           </button>
         </div>
         <canvas id="webcam-canvas" style="display: none;"></canvas>
@@ -345,12 +346,10 @@
           </div>
           <div class="plant-name-display">
             <span class="plant-emoji" id="res-plant-emoji">🌿</span>
-            <div class="plant-name-text-wrapper">
-              <div class="plant-name-text" id="res-name">–</div>
-              <!-- Scientific name -->
-              <div class="scientific-name" id="res-scientific-name"></div>
-            </div>
+            <div class="plant-name-text" id="res-name">–</div>
           </div>
+          <!-- Scientific name -->
+          <div class="scientific-name" id="res-scientific-name"></div>
         </div>
 
         <!-- Confidence pill -->
