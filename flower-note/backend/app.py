@@ -1,4 +1,4 @@
-"""
+"""  # noqa – reload trigger: 2026-04-22T22:17
 app.py – FastAPI application chính cho Flower Note 🌸
 ======================================================
 Khởi động:
@@ -24,8 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 
-from database import init_db, AsyncSessionLocal
-from db_models import Plant, RecognitionHistory
+from database import init_db, AsyncSessionLocal, engine
+from db_models import Plant, RecognitionHistory, BananaPlant, BananaRecognitionHistory, PapayaPlant, PapayaRecognitionHistory
 from models import get_predictor, PlantPredictor, PLANT_DATABASE
 
 # ──────────────────────────── Logging ────────────────────────────────────────
@@ -39,7 +39,11 @@ logger = logging.getLogger(__name__)
 
 # ─────────────────────── Load Plants Data ───────────────────────────────────
 PLANTS_DATA_FILE = Path(__file__).parent / "plants_data.json"
+BANANA_DATA_FILE = Path(__file__).parent / "banana_data.json"
+PAPAYA_DATA_FILE = Path(__file__).parent / "papaya_data.json"
 PLANTS_DETAILED_DATA = {}
+BANANA_DETAILED_DATA = {}
+PAPAYA_DETAILED_DATA = {}
 
 def load_plants_data():
     """Load dữ liệu chi tiết cây từ file JSON."""
@@ -49,10 +53,45 @@ def load_plants_data():
             with open(PLANTS_DATA_FILE, "r", encoding="utf-8") as f:
                 PLANTS_DETAILED_DATA = json.load(f)
             logger.info(f"✅ Đã load dữ liệu {len(PLANTS_DETAILED_DATA)} loài cây từ plants_data.json")
+            logger.info(f"📋 Keys loaded: {sorted(list(PLANTS_DETAILED_DATA.keys()))}")
+            if '15' in PLANTS_DETAILED_DATA:
+                logger.info(f"✅ Plant 15 loaded: {PLANTS_DETAILED_DATA['15'].get('common_name')}")
+            else:
+                logger.warning(f"⚠️ Plant 15 NOT found in loaded data!")
         except Exception as e:
             logger.error(f"❌ Lỗi load plants_data.json: {e}")
     else:
         logger.warning(f"⚠️ File plants_data.json không tìm thấy tại {PLANTS_DATA_FILE}")
+
+
+def load_banana_data():
+    """Load dữ liệu chi tiết chuối từ file JSON."""
+    global BANANA_DETAILED_DATA
+    if BANANA_DATA_FILE.exists(): 
+        try:
+            with open(BANANA_DATA_FILE, "r", encoding="utf-8") as f:
+                BANANA_DETAILED_DATA = json.load(f)
+            logger.info(f"✅ Đã load dữ liệu chuối từ banana_data.json")
+            logger.info(f"📋 Chuối entries: {list(BANANA_DETAILED_DATA.keys())}")
+        except Exception as e:
+            logger.error(f"❌ Lỗi load banana_data.json: {e}")
+    else:
+        logger.warning(f"⚠️ File banana_data.json không tìm thấy tại {BANANA_DATA_FILE}")
+
+
+def load_papaya_data():
+    """Load dữ liệu chi tiết đu dủ từ file JSON."""
+    global PAPAYA_DETAILED_DATA
+    if PAPAYA_DATA_FILE.exists(): 
+        try:
+            with open(PAPAYA_DATA_FILE, "r", encoding="utf-8") as f:
+                PAPAYA_DETAILED_DATA = json.load(f)
+            logger.info(f"✅ Đã load dữ liệu đu dủ từ papaya_data.json")
+            logger.info(f"📋 Đu dủ entries: {list(PAPAYA_DETAILED_DATA.keys())}")
+        except Exception as e:
+            logger.error(f"❌ Lỗi load papaya_data.json: {e}")
+    else:
+        logger.warning(f"⚠️ File papaya_data.json không tìm thấy tại {PAPAYA_DATA_FILE}")
 
 
 # ─────────────────────── App Lifespan ────────────────────────────────────────
@@ -63,12 +102,32 @@ async def lifespan(app: FastAPI):
 
     # ── Load dữ liệu cây chi tiết ─────────────────────────────────────────────
     load_plants_data()
+    # Chỉ load dữ liệu phụ khi file tồn tại
+    if BANANA_DATA_FILE.exists():
+        load_banana_data()
+    if PAPAYA_DATA_FILE.exists():
+        load_papaya_data()
 
     # ── Tạo bảng DB (nếu chưa có) ────────────────────────────────────────────
     try:
         await init_db()
         logger.info("✅ Database tables sẵn sàng.")
         await _seed_plants_if_empty()
+        # Chỉ seed các bảng phụ khi có dữ liệu chi tiết tương ứng
+        if BANANA_DETAILED_DATA:
+            await _seed_bananas_if_empty()
+        if PAPAYA_DETAILED_DATA:
+            await _seed_papayas_if_empty()
+        # Kiểm tra tồn tại bảng phụ trong DB và lưu flag vào app.state
+        def _inspect_tables(sync_conn):
+            from sqlalchemy import inspect
+            insp = inspect(sync_conn)
+            return insp.has_table("banana_plants"), insp.has_table("papaya_plants")
+
+        async with engine.begin() as conn:
+            banana_exists, papaya_exists = await conn.run_sync(_inspect_tables)
+        app.state.banana_enabled = banana_exists
+        app.state.papaya_enabled = papaya_exists
     except Exception as e:
         logger.error("❌ Lỗi khởi tạo database: %s", e)
 
@@ -107,6 +166,88 @@ async def _seed_plants_if_empty():
             session.add(plant)
         await session.commit()
         logger.info("✅ Seed xong %d loài cây.", len(PLANT_DATABASE))
+
+
+async def _seed_bananas_if_empty():
+    """Seed bảng banana_plants từ BANANA_DETAILED_DATA nếu bảng còn trống."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(BananaPlant).limit(1))
+        if result.scalar_one_or_none() is not None:
+            logger.info("📋 Bảng banana_plants đã có dữ liệu, bỏ qua seed.")
+            return
+
+        logger.info("🍌 Seeding bảng banana_plants …")
+        for banana_key, banana_info in BANANA_DETAILED_DATA.items():
+            banana = BananaPlant(
+                common_name=banana_info.get("common_name"),
+                english_name=banana_info.get("english_name"),
+                scientific_name=banana_info.get("scientific_name"),
+                family=banana_info.get("family"),
+                description=banana_info.get("description"),
+                characteristics=banana_info.get("characteristics"),
+                uses=banana_info.get("uses"),
+                care=banana_info.get("care"),
+                toxicity=banana_info.get("toxicity"),
+                benefits=banana_info.get("benefits"),
+                light_requirement=banana_info.get("light_requirement"),
+                water_requirement=banana_info.get("water_requirement"),
+                ideal_temp=banana_info.get("ideal_temp"),
+                humidity=banana_info.get("humidity"),
+                soil_type=banana_info.get("soil_type"),
+                growth_rate=banana_info.get("growth_rate"),
+                lifespan=banana_info.get("lifespan"),
+                propagation=banana_info.get("propagation"),
+                extra_data={
+                    "varieties": banana_info.get("varieties", []),
+                    "ripeness_stages": banana_info.get("ripeness_stages", []),
+                    "pest_diseases": banana_info.get("pest_diseases", []),
+                    "harvest_tips": banana_info.get("harvest_tips", []),
+                }
+            )
+            session.add(banana)
+        await session.commit()
+        logger.info("✅ Seed xong %d dữ liệu chuối.", len(BANANA_DETAILED_DATA))
+
+
+async def _seed_papayas_if_empty():
+    """Seed bảng papaya_plants từ PAPAYA_DETAILED_DATA nếu bảng còn trống."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(PapayaPlant).limit(1))
+        if result.scalar_one_or_none() is not None:
+            logger.info("📋 Bảng papaya_plants đã có dữ liệu, bỏ qua seed.")
+            return
+
+        logger.info("🧡 Seeding bảng papaya_plants …")
+        for papaya_key, papaya_info in PAPAYA_DETAILED_DATA.items():
+            papaya = PapayaPlant(
+                common_name=papaya_info.get("common_name"),
+                english_name=papaya_info.get("english_name"),
+                scientific_name=papaya_info.get("scientific_name"),
+                family=papaya_info.get("family"),
+                description=papaya_info.get("description"),
+                characteristics=papaya_info.get("characteristics"),
+                uses=papaya_info.get("uses"),
+                care=papaya_info.get("care"),
+                toxicity=papaya_info.get("toxicity"),
+                benefits=papaya_info.get("benefits"),
+                light_requirement=papaya_info.get("light_requirement"),
+                water_requirement=papaya_info.get("water_requirement"),
+                ideal_temp=papaya_info.get("ideal_temp"),
+                humidity=papaya_info.get("humidity"),
+                soil_type=papaya_info.get("soil_type"),
+                growth_rate=papaya_info.get("growth_rate"),
+                lifespan=papaya_info.get("lifespan"),
+                propagation=papaya_info.get("propagation"),
+                extra_data={
+                    "varieties": papaya_info.get("varieties", []),
+                    "ripeness_stages": papaya_info.get("ripeness_stages", []),
+                    "pest_diseases": papaya_info.get("pest_diseases", []),
+                    "harvest_tips": papaya_info.get("harvest_tips", []),
+                }
+            )
+            session.add(papaya)
+        await session.commit()
+        logger.info("✅ Seed xong %d dữ liệu đu dủ.", len(PAPAYA_DETAILED_DATA))
 
 
 # ────────────────────────── FastAPI App ──────────────────────────────────────
@@ -247,6 +388,64 @@ async def predict(
             )
             session.add(history)
             await session.commit()
+            
+            # ── Nếu phát hiện chuối, tự động lưu vào banana_recognition_history ──
+            if result["plant_name"].lower() == "cây chuối" or "chuối" in result["plant_name"].lower():
+                logger.info("🍌 Phát hiện chuối! Lưu vào bảng banana_recognition_history")
+                try:
+                    # Lấy banana plant (thường chỉ có 1)
+                    banana_result = await session.execute(
+                        select(BananaPlant).limit(1)
+                    )
+                    banana_plant = banana_result.scalar_one_or_none()
+                    
+                    if banana_plant:
+                        banana_history = BananaRecognitionHistory(
+                            id=str(uuid.uuid4()),
+                            banana_plant_id=banana_plant.id,
+                            confidence=result["confidence"],
+                            processing_time_ms=processing_time_ms,
+                            bbox=result.get("bbox"),
+                            all_detections=result.get("all_detections", []),
+                            image_base64=full_base64,
+                            ripeness_stage=None,  # Could be detected by additional ML model
+                            estimated_quantity=None,  # Could be counted by additional ML model
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        session.add(banana_history)
+                        await session.commit()
+                        logger.info("✅ Đã lưu chuối vào bảng banana_recognition_history")
+                except Exception as e:
+                    logger.warning("⚠️ Lỗi lưu lịch sử chuối: %s", e)
+            
+            # ── Nếu phát hiện đu dủ, tự động lưu vào papaya_recognition_history ──
+            if result["plant_name"].lower() == "cây đu dủ" or "đu dủ" in result["plant_name"].lower():
+                logger.info("🧡 Phát hiện đu dủ! Lưu vào bảng papaya_recognition_history")
+                try:
+                    # Lấy papaya plant (thường chỉ có 1)
+                    papaya_result = await session.execute(
+                        select(PapayaPlant).limit(1)
+                    )
+                    papaya_plant = papaya_result.scalar_one_or_none()
+                    
+                    if papaya_plant:
+                        papaya_history = PapayaRecognitionHistory(
+                            id=str(uuid.uuid4()),
+                            papaya_plant_id=papaya_plant.id,
+                            confidence=result["confidence"],
+                            processing_time_ms=processing_time_ms,
+                            bbox=result.get("bbox"),
+                            all_detections=result.get("all_detections", []),
+                            image_base64=full_base64,
+                            ripeness_stage=None,  # Could be detected by additional ML model
+                            estimated_quantity=None,  # Could be counted by additional ML model
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        session.add(papaya_history)
+                        await session.commit()
+                        logger.info("✅ Đã lưu đu dủ vào bảng papaya_recognition_history")
+                except Exception as e:
+                    logger.warning("⚠️ Lỗi lưu lịch sử đu dủ: %s", e)
     except Exception as e:
         logger.warning("⚠️ Không lưu được lịch sử: %s", e)
 
@@ -321,6 +520,64 @@ async def predict_from_url(
             )
             session.add(history)
             await session.commit()
+            
+            # ── Nếu phát hiện chuối, tự động lưu vào banana_recognition_history ──
+            if result["plant_name"].lower() == "cây chuối" or "chuối" in result["plant_name"].lower():
+                logger.info("🍌 Phát hiện chuối! Lưu vào bảng banana_recognition_history")
+                try:
+                    # Lấy banana plant (thường chỉ có 1)
+                    banana_result = await session.execute(
+                        select(BananaPlant).limit(1)
+                    )
+                    banana_plant = banana_result.scalar_one_or_none()
+                    
+                    if banana_plant:
+                        banana_history = BananaRecognitionHistory(
+                            id=str(uuid.uuid4()),
+                            banana_plant_id=banana_plant.id,
+                            confidence=result["confidence"],
+                            processing_time_ms=processing_time_ms,
+                            bbox=result.get("bbox"),
+                            all_detections=result.get("all_detections", []),
+                            image_base64=full_base64,
+                            ripeness_stage=None,
+                            estimated_quantity=None,
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        session.add(banana_history)
+                        await session.commit()
+                        logger.info("✅ Đã lưu chuối vào bảng banana_recognition_history")
+                except Exception as e:
+                    logger.warning("⚠️ Lỗi lưu lịch sử chuối: %s", e)
+            
+            # ── Nếu phát hiện đu dủ, tự động lưu vào papaya_recognition_history ──
+            if result["plant_name"].lower() == "cây đu dủ" or "đu dủ" in result["plant_name"].lower():
+                logger.info("🧡 Phát hiện đu dủ! Lưu vào bảng papaya_recognition_history")
+                try:
+                    # Lấy papaya plant (thường chỉ có 1)
+                    papaya_result = await session.execute(
+                        select(PapayaPlant).limit(1)
+                    )
+                    papaya_plant = papaya_result.scalar_one_or_none()
+                    
+                    if papaya_plant:
+                        papaya_history = PapayaRecognitionHistory(
+                            id=str(uuid.uuid4()),
+                            papaya_plant_id=papaya_plant.id,
+                            confidence=result["confidence"],
+                            processing_time_ms=processing_time_ms,
+                            bbox=result.get("bbox"),
+                            all_detections=result.get("all_detections", []),
+                            image_base64=full_base64,
+                            ripeness_stage=None,
+                            estimated_quantity=None,
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        session.add(papaya_history)
+                        await session.commit()
+                        logger.info("✅ Đã lưu đu dủ vào bảng papaya_recognition_history")
+                except Exception as e:
+                    logger.warning("⚠️ Lỗi lưu lịch sử đu dủ: %s", e)
     except Exception as e:
         logger.warning("⚠️ Không lưu được lịch sử: %s", e)
 
@@ -344,7 +601,8 @@ async def get_history(limit: int = Query(default=20, ge=1, le=100)):
             rows = result.scalars().all()
     except Exception as e:
         logger.error("❌ Lỗi đọc lịch sử: %s", e)
-        raise HTTPException(status_code=500, detail="Lỗi đọc lịch sử từ database.")
+        # Return empty list instead of error
+        return []
 
     return [
         {
@@ -397,6 +655,194 @@ async def delete_history_item(item_id: str):
         await session.delete(row)
         await session.commit()
         return {"status": "success", "message": f"Đã xóa lịch sử {item_id}"}
+
+
+# ──────────────────────── Banana Endpoints ───────────────────────────────────
+@app.get("/api/bananas", tags=["Bananas"])
+async def get_bananas():
+    """Lấy toàn bộ danh sách chuối từ bảng banana_plants."""
+    if not getattr(app.state, "banana_enabled", False):
+        raise HTTPException(status_code=404, detail="Banana database not available.")
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(BananaPlant).order_by(BananaPlant.common_name))
+        bananas = result.scalars().all()
+    
+    return [
+        {
+            "id": b.id,
+            "common_name": b.common_name,
+            "english_name": b.english_name,
+            "scientific_name": b.scientific_name,
+            "family": b.family,
+            "description": b.description,
+            "characteristics": b.characteristics,
+            "uses": b.uses,
+            "care": b.care,
+            "toxicity": b.toxicity,
+            "benefits": b.benefits,
+            "light_requirement": b.light_requirement,
+            "water_requirement": b.water_requirement,
+            "ideal_temp": b.ideal_temp,
+            "humidity": b.humidity,
+            "soil_type": b.soil_type,
+            "growth_rate": b.growth_rate,
+            "lifespan": b.lifespan,
+            "propagation": b.propagation,
+            "extra_data": b.extra_data,
+        }
+        for b in bananas
+    ]
+
+
+@app.get("/api/bananas/{banana_id}", tags=["Bananas"])
+async def get_banana_detail(banana_id: int):
+    """Lấy dữ liệu chi tiết của một loài chuối."""
+    if not getattr(app.state, "banana_enabled", False):
+        raise HTTPException(status_code=404, detail="Banana database not available.")
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(BananaPlant).where(BananaPlant.id == banana_id)
+        )
+        banana = result.scalar_one_or_none()
+        if not banana:
+            raise HTTPException(status_code=404, detail="Không tìm thấy chuối.")
+        
+        return {
+            "id": banana.id,
+            "common_name": banana.common_name,
+            "english_name": banana.english_name,
+            "scientific_name": banana.scientific_name,
+            "family": banana.family,
+            "description": banana.description,
+            "characteristics": banana.characteristics,
+            "uses": banana.uses,
+            "care": banana.care,
+            "toxicity": banana.toxicity,
+            "benefits": banana.benefits,
+            "light_requirement": banana.light_requirement,
+            "water_requirement": banana.water_requirement,
+            "ideal_temp": banana.ideal_temp,
+            "humidity": banana.humidity,
+            "soil_type": banana.soil_type,
+            "growth_rate": banana.growth_rate,
+            "lifespan": banana.lifespan,
+            "propagation": banana.propagation,
+            "extra_data": banana.extra_data,
+        }
+
+
+@app.get("/api/banana-history", tags=["Bananas"])
+async def get_banana_history(limit: int = Query(default=20, ge=1, le=100)):
+    """Lấy danh sách lịch sử nhận diện chuối gần nhất."""
+    if not getattr(app.state, "banana_enabled", False):
+        return []
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(BananaRecognitionHistory)
+            .order_by(BananaRecognitionHistory.timestamp.desc())
+            .limit(limit)
+        )
+        rows = result.scalars().all()
+    
+    return [
+        {
+            "id": row.id,
+            "banana_plant_id": row.banana_plant_id,
+            "confidence": row.confidence,
+            "processing_time_ms": row.processing_time_ms,
+            "ripeness_stage": row.ripeness_stage,
+            "estimated_quantity": row.estimated_quantity,
+            "timestamp": row.timestamp.isoformat(),
+        }
+        for row in rows
+    ]
+
+
+@app.get("/api/banana-history/{history_id}", tags=["Bananas"])
+async def get_banana_history_detail(history_id: str):
+    """Lấy chi tiết lịch sử nhận diện chuối (bao gồm ảnh)."""
+    if not getattr(app.state, "banana_enabled", False):
+        raise HTTPException(status_code=404, detail="Banana database not available.")
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(BananaRecognitionHistory).where(BananaRecognitionHistory.id == history_id)
+        )
+        row = result.scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=404, detail="Không tìm thấy lịch sử chuối.")
+        
+        return {
+            "id": row.id,
+            "banana_plant_id": row.banana_plant_id,
+            "confidence": row.confidence,
+            "processing_time_ms": row.processing_time_ms,
+            "bbox": row.bbox,
+            "all_detections": row.all_detections or [],
+            "image_base64": row.image_base64,
+            "ripeness_stage": row.ripeness_stage,
+            "estimated_quantity": row.estimated_quantity,
+            "timestamp": row.timestamp.isoformat(),
+        }
+
+
+@app.post("/api/banana-history", tags=["Bananas"])
+async def create_banana_history(
+    banana_plant_id: int = Body(...),
+    confidence: float = Body(...),
+    processing_time_ms: float = Body(default=0.0),
+    bbox: list[float] | None = Body(default=None),
+    ripeness_stage: str | None = Body(default=None),
+    estimated_quantity: int | None = Body(default=None),
+):
+    """Tạo bản ghi lịch sử chuối mới (thường được gọi tự động khi phát hiện chuối)."""
+    if not getattr(app.state, "banana_enabled", False):
+        raise HTTPException(status_code=404, detail="Banana database not available.")
+    async with AsyncSessionLocal() as session:
+        # Kiểm tra chuối tồn tại
+        banana_result = await session.execute(
+            select(BananaPlant).where(BananaPlant.id == banana_plant_id)
+        )
+        if banana_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Không tìm thấy chuối ID.")
+        
+        history = BananaRecognitionHistory(
+            id=str(uuid.uuid4()),
+            banana_plant_id=banana_plant_id,
+            confidence=confidence,
+            processing_time_ms=processing_time_ms,
+            bbox=bbox,
+            ripeness_stage=ripeness_stage,
+            estimated_quantity=estimated_quantity,
+            timestamp=datetime.now(timezone.utc),
+        )
+        session.add(history)
+        await session.commit()
+        
+        return {
+            "id": history.id,
+            "banana_plant_id": history.banana_plant_id,
+            "confidence": history.confidence,
+            "processing_time_ms": history.processing_time_ms,
+            "timestamp": history.timestamp.isoformat(),
+        }
+
+
+@app.delete("/api/banana-history/{history_id}", tags=["Bananas"])
+async def delete_banana_history(history_id: str):
+    """Xóa một bản ghi lịch sử chuối."""
+    if not getattr(app.state, "banana_enabled", False):
+        raise HTTPException(status_code=404, detail="Banana database not available.")
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(BananaRecognitionHistory).where(BananaRecognitionHistory.id == history_id)
+        )
+        row = result.scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=404, detail="Không tìm thấy lịch sử chuối.")
+        
+        await session.delete(row)
+        await session.commit()
+        return {"status": "success", "message": f"Đã xóa lịch sử chuối {history_id}"}
 
 
 @app.get("/api/plants", tags=["Plants"])

@@ -50,6 +50,7 @@ async def init_db() -> None:
             from sqlalchemy import text
             await conn.execute(text("ALTER TABLE recognition_history ADD COLUMN IF NOT EXISTS all_detections JSON"))
             await conn.execute(text("ALTER TABLE recognition_history ADD COLUMN IF NOT EXISTS image_base64 TEXT"))
+            # Không thực hiện ALTER cho các bảng phụ (banana/papaya) ở đây
         except Exception:
             pass # Bỏ qua nếu có lỗi (ví dụ: đang dùng SQLite hoặc cột đã có)
 

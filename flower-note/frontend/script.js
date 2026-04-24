@@ -24,11 +24,12 @@
 const getAPIBase = () => {
   const url = new URL(window.location.href);
   // If accessing via ngrok or custom domain, use it as base
-  if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
-    return `${url.protocol}//${url.host}`;
+  if (url.protocol === 'file:' || url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '') {
+    // File protocol hoặc localhost → dùng localhost:8000
+    return 'http://localhost:8000';
   }
-  // Otherwise use localhost:8000
-  return 'http://localhost:8000';
+  // Otherwise use ngrok or custom domain
+  return `${url.protocol}//${url.host}`;
 };
 
 const API_BASE = getAPIBase();
@@ -43,6 +44,19 @@ const CONFIG = {
   HEALTH_INTERVAL_MS: 30_000,
   FETCH_TIMEOUT: 60_000,  // 60 seconds for slower ngrok connections
 };
+
+/**
+ * Wrapper fetch tự động thêm header bypass ngrok browser-warning.
+ * Cần thiết khi truy cập qua ngrok trên điện thoại:
+ * ngrok chặn AJAX request bằng trang HTML cảnh báo nếu thiếu header này.
+ */
+function apiFetch(url, options = {}) {
+  const headers = {
+    'ngrok-skip-browser-warning': 'true',
+    ...(options.headers || {}),
+  };
+  return fetch(url, { ...options, headers });
+}
 
 /* ════════════════════════════════════════════════
    THEME CONFIGURATION
@@ -152,6 +166,7 @@ const resConfText      = $('res-conf-text');
 const resConfBar       = $('res-conf-bar');
 const resConfGrade     = $('res-conf-grade');
 const resScientific    = $('res-scientific-name');
+const resExtra         = $('res-extra');
 const processingTime   = $('processing-time');
 
 // Tab panels
@@ -172,63 +187,139 @@ const statusDot        = $('status-dot');
 const statusText       = $('status-text');
 const toast            = $('toast');
 
-const historyList      = $('history-list');
-const historyEmpty     = $('history-empty');
-const btnClearHistory  = $('btn-clear-history');
+
 
 /* ════════════════════════════════════════════════
    STATE & DOM MỚI (TABS, WEBCAM, URL)
 ════════════════════════════════════════════════ */
-let currentInputMode = 'file'; // 'file' | 'webcam' | 'url'
-let webcamStream     = null;
-let currentFile      = null;
-let lastResult       = null;
-let selectedIndex    = 0;
-let toastTimer       = null;
-let healthTimer      = null;
+let currentInputMode  = 'file'; // 'file' | 'webcam' | 'url'
+let webcamStream      = null;
+let currentFacingMode = 'environment'; // 'environment' = cam sau | 'user' = cam trước
+let currentFile       = null;
+let lastResult        = null;
+let selectedIndex     = 0;
+let toastTimer        = null;
+let healthTimer       = null;
 
 const uploadTabBtns = document.querySelectorAll('.upload-tab-btn');
 const uploadPanels  = document.querySelectorAll('.upload-panel');
 
-const webcamVideo   = $('webcam-video');
-const webcamOverlay = $('webcam-overlay');
-const btnCapture    = $('btn-capture');
-const webcamCanvas  = $('webcam-canvas');
-const urlInput      = $('url-input');
+const webcamVideo      = $('webcam-video');
+const webcamOverlay    = $('webcam-overlay');
+const btnCapture       = $('btn-capture');
+const btnSwitchCamera  = $('btn-switch-camera');
+const webcamCanvas     = $('webcam-canvas');
+const urlInput         = $('url-input');
 
-async function startWebcam() {
+// Phát hiện thiết bị di động
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+}
+
+async function startWebcam(facingMode = null) {
+  // Dừng stream cũ nếu đang chạy
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(t => t.stop());
+    webcamStream = null;
+  }
+
+  const mobile = isMobileDevice();
+
+  // Quyết định facingMode:
+  // - Truyền vào rõ ràng → dùng đúng giá trị đó
+  // - Điện thoại → mặc định cam SAU (environment) để chụp cây
+  // - Laptop/PC  → mặc định cam TRƯỚC (user), vì thường chỉ có 1 cam
+  currentFacingMode = facingMode ?? (mobile ? 'environment' : 'user');
+
+  // Nút đổi cam: chỉ hiện trên điện thoại
+  if (btnSwitchCamera) {
+    btnSwitchCamera.style.display = mobile ? 'flex' : 'none';
+    btnSwitchCamera.title = currentFacingMode === 'environment'
+      ? '🤳 Chuyển sang camera trước'
+      : '📷 Chuyển sang camera sau';
+  }
+
+  // Mirror video chỉ khi dùng camera TRƯỚC (selfie)
+  if (webcamVideo) {
+    webcamVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+  }
+
   try {
-    webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const constraints = {
+      video: mobile
+        ? {
+            facingMode: { ideal: currentFacingMode },
+            width:  { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        : {
+            facingMode: currentFacingMode,
+            width:  { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+    };
+    webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
     webcamVideo.srcObject = webcamStream;
+    // Đảm bảo video play (cần thiết trên một số trình duyệt mobile)
+    webcamVideo.play().catch(() => {});
     webcamOverlay.classList.add('hidden');
   } catch (err) {
-    console.error('Lỗi Webcam:', err);
-    let errorMsg = 'Không thể bật camera';
-    let toastMsg = '❌ Vui lòng cấp quyền truy cập Camera!';
-    
-    // Better error messages based on error type
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      errorMsg = 'Quyền truy cập bị từ chối';
-      toastMsg = '❌ Bạn đã từ chối quyền truy cập camera. Vui lòng cho phép trong cài đặt!';
-    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-      errorMsg = 'Không tìm thấy camera';
-      toastMsg = '❌ Thiết bị không có camera hoặc camera bị sử dụng bởi ứng dụng khác!';
-    } else if (err.name === 'NotReadableError') {
-      errorMsg = 'Camera đang bị sử dụng';
-      toastMsg = '❌ Camera đang được ứng dụng khác sử dụng. Hãy tắt nó và thử lại!';
-    } else if (err.name === 'SecurityError') {
-      errorMsg = 'Vấn đề bảo mật';
-      toastMsg = '❌ Truy cập camera bị chặn do vấn đề bảo mật. Hãy dùng HTTPS hoặc localhost!';
+    // Laptop không có camera sau → fallback không dùng facingMode
+    if (currentFacingMode === 'environment' &&
+        (err.name === 'OverconstrainedError' || err.name === 'NotFoundError' || err.name === 'NotReadableError')) {
+      console.warn('⚠️ Không có camera sau, thử camera mặc định...');
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        webcamVideo.srcObject = webcamStream;
+        webcamVideo.play().catch(() => {});
+        webcamOverlay.classList.add('hidden');
+        currentFacingMode = 'user';
+        if (webcamVideo) webcamVideo.style.transform = 'scaleX(-1)';
+        return;
+      } catch (err2) {
+        _handleWebcamError(err2); return;
+      }
     }
-    
-    webcamOverlay.innerHTML = `<i class="fa-solid fa-triangle-exclamation fa-2x"></i><p>${errorMsg}</p>`;
-    showToast(toastMsg, 'error');
+    _handleWebcamError(err);
+  }
+}
+
+function _handleWebcamError(err) {
+  console.error('Lỗi Webcam:', err);
+  let errorMsg = 'Không thể bật camera';
+  let toastMsg = '❌ Vui lòng cấp quyền truy cập Camera!';
+  if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+    errorMsg = 'Quyền truy cập bị từ chối';
+    toastMsg = '❌ Bạn đã từ chối quyền truy cập camera. Vui lòng cho phép trong cài đặt!';
+  } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+    errorMsg = 'Không tìm thấy camera';
+    toastMsg = '❌ Thiết bị không có camera hoặc camera bị sử dụng bởi ứng dụng khác!';
+  } else if (err.name === 'NotReadableError') {
+    errorMsg = 'Camera đang bị sử dụng';
+    toastMsg = '❌ Camera đang được ứng dụng khác sử dụng. Hãy tắt nó và thử lại!';
+  } else if (err.name === 'SecurityError') {
+    errorMsg = 'Vấn đề bảo mật';
+    toastMsg = '❌ Truy cập camera bị chặn. Hãy dùng HTTPS hoặc localhost!';
+  }
+  webcamOverlay.innerHTML = `<i class="fa-solid fa-triangle-exclamation fa-2x"></i><p>${errorMsg}</p>`;
+  showToast(toastMsg, 'error');
+}
+
+async function switchCamera() {
+  const newMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+  showToast(newMode === 'environment' ? '📷 Chuyển sang camera sau...' : '🤳 Chuyển sang camera trước...');
+  await startWebcam(newMode);
+  // Cập nhật tooltip sau khi startWebcam đã cập nhật currentFacingMode
+  if (btnSwitchCamera) {
+    btnSwitchCamera.title = currentFacingMode === 'environment'
+      ? '🤳 Chuyển sang camera trước'
+      : '📷 Chuyển sang camera sau';
   }
 }
 
 function stopWebcam() {
   if (webcamStream) {
-    webcamStream.getTracks().forEach(track => track.stop());
+    webcamStream.getTracks().forEach(t => t.stop());
     webcamStream = null;
   }
   if (webcamVideo) webcamVideo.srcObject = null;
@@ -236,6 +327,7 @@ function stopWebcam() {
     webcamOverlay.classList.remove('hidden');
     webcamOverlay.innerHTML = '<i class="fa-solid fa-camera fa-2x"></i><p>Đang bật camera...</p>';
   }
+  if (btnSwitchCamera) btnSwitchCamera.style.display = 'none';
 }
 
 /* ════════════════════════════════════════════════
@@ -243,7 +335,7 @@ function stopWebcam() {
 ════════════════════════════════════════════════ */
 async function checkHealth() {
   try {
-    const res   = await fetch(CONFIG.API_HEALTH, { signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT) });
+    const res   = await apiFetch(CONFIG.API_HEALTH, { signal: AbortSignal.timeout(CONFIG.FETCH_TIMEOUT) });
     const data  = await res.json();
     const ready = res.ok && data.status === 'ready';
     statusDot.className   = ready ? 'fa-solid fa-circle online' : 'fa-solid fa-circle offline';
@@ -387,7 +479,7 @@ async function runPrediction() {
   if (currentInputMode === 'url') {
     const urlValue = urlInput.value.trim();
     previewImg.src = urlValue; // Set tạm preview để resultImg lấy được src
-    fetchPromise = fetch(`${CONFIG.API_BASE}/api/predict-url?conf=${CONFIG.CONF_DEFAULT}`, {
+    fetchPromise = apiFetch(`${CONFIG.API_BASE}/api/predict-url?conf=${CONFIG.CONF_DEFAULT}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: urlValue })
@@ -395,7 +487,7 @@ async function runPrediction() {
   } else {
     const formData = new FormData();
     formData.append('file', currentFile);
-    fetchPromise = fetch(`${CONFIG.API_PREDICT}?conf=${CONFIG.CONF_DEFAULT}`, {
+    fetchPromise = apiFetch(`${CONFIG.API_PREDICT}?conf=${CONFIG.CONF_DEFAULT}`, {
       method: 'POST',
       body: formData
     });
@@ -416,7 +508,6 @@ async function runPrediction() {
     lastResult = data;
     selectedIndex = 0; // Luôn mặc định chọn kết quả tốt nhất khi mới nhận diện
     renderResult(data);
-    await loadHistory();    // Tải lại lịch sử sau mỗi lần nhận diện
   } catch (err) {
     console.error('[Flower Note] Predict error:', err);
     if (err.name === 'TypeError' && err.message.includes('fetch')) {
@@ -443,7 +534,7 @@ async function loadPlantDetailData(plantId) {
     const url = `${CONFIG.API_BASE}/api/plants/detail/${plantIdStr}`;
     console.log(`📡 Fetching from: ${url}`);
     
-    const response = await fetch(url);
+    const response = await apiFetch(url);
     console.log(`📊 Response status: ${response.status}`);
     
     if (!response.ok) {
@@ -456,11 +547,43 @@ async function loadPlantDetailData(plantId) {
     console.log(`✅ Dữ liệu chi tiết nhận được:`, data);
     
     // Cập nhật các trường thông tin
-    if (data.description) resDesc.textContent = data.description;
-    if (data.benefits) resUses.textContent = data.benefits;
-    if (data.light_requirement) resChars.textContent = `☀️ ${data.light_requirement}`;
-    if (data.water_requirement) resCare.textContent = `💧 ${data.water_requirement}`;
+    if (data.scientific_name) resScientific.textContent = `Tên khoa học: ${data.scientific_name}`;
+    // Ưu tiên data.uses (đầy đủ), fallback sang data.benefits (tóm tắt)
+    if (data.uses) resUses.textContent = data.uses;
+    else if (data.benefits) resUses.textContent = data.benefits;
+    // Dùng characteristics đầy đủ từ JSON, không dùng light_requirement để thay thế
+    if (data.characteristics) resChars.textContent = data.characteristics;
+    // Ghép thông tin chăm sóc: care + light + water
+    const careParts = [];
+    if (data.care) careParts.push(data.care);
+    if (data.light_requirement) careParts.push(`☀️ Ánh sáng: ${data.light_requirement}`);
+    if (data.water_requirement) careParts.push(`💧 Tưới nước: ${data.water_requirement}`);
+    if (careParts.length > 0) resCare.textContent = careParts.join('\n\n');
     if (data.toxicity) resWarnText.textContent = data.toxicity;
+
+    // Xóa hết nội dung trong ô tên loài (chỉ giữ scientific name + plant name)
+    if (resExtra) resExtra.innerHTML = '';
+
+    // Tất cả thông tin phụ đều chuyển xuống tab Mô tả
+    const descMetaLines = [];
+    if (data.common_name) descMetaLines.push(`<strong>Tên phổ biến:</strong> ${data.common_name}`);
+    if (data.english_name) descMetaLines.push(`<strong>Tên tiếng Anh:</strong> ${data.english_name}`);
+    if (data.family) descMetaLines.push(`<strong>Họ:</strong> ${data.family}`);
+    if (data.ideal_temp) descMetaLines.push(`<strong>Nhiệt độ tối ưu:</strong> ${data.ideal_temp}`);
+    if (data.humidity) descMetaLines.push(`<strong>Độ ẩm:</strong> ${data.humidity}`);
+    if (data.soil_type) descMetaLines.push(`<strong>Đất:</strong> ${data.soil_type}`);
+    if (data.growth_rate) descMetaLines.push(`<strong>Tốc độ phát triển:</strong> ${data.growth_rate}`);
+    if (data.lifespan) descMetaLines.push(`<strong>Tuổi thọ:</strong> ${data.lifespan}`);
+    if (data.propagation) descMetaLines.push(`<strong>Nhân giống:</strong> ${data.propagation}`);
+
+    let descText = data.description || '';
+    if (!descText) descText = 'Chưa có thông tin mô tả.';
+
+    let descHtml = `<div class="main-desc">${descText}</div>`;
+    if (descMetaLines.length > 0) {
+      descHtml += `<div class="meta-list extra-desc-meta" style="margin-top: 15px;">${descMetaLines.map(l => `<div class="meta-item">${l}</div>`).join('')}</div>`;
+    }
+    if (resDesc) resDesc.innerHTML = descHtml;
     
     // Nếu có thông tin độc tính cảnh báo, hiển thị tab cảnh báo
     if (data.toxicity && data.toxicity.toLowerCase().includes('độc')) {
@@ -521,7 +644,7 @@ function selectDetection(index) {
   resPlantEmoji.textContent = getPlantEmoji(plant_name);
 
   /* ── Tên khoa học ── */
-  resScientific.textContent = scientific_name ? `✦ ${scientific_name}` : '';
+  resScientific.textContent = scientific_name ? `Tên khoa học: ${scientific_name}` : '';
 
   /* ── Confidence bar ── */
   const pct = Math.round(confidence * 100);
@@ -545,6 +668,7 @@ function selectDetection(index) {
   resChars.textContent = characteristics || 'Chưa có thông tin đặc điểm nhận dạng.';
   resUses.textContent  = uses  || 'Chưa có thông tin công dụng.';
   resCare.textContent  = care  || 'Chưa có thông tin chăm sóc.';
+  if (resExtra) resExtra.innerHTML = '';
 
   /* ── Cảnh báo ── */
   if (warning) {
@@ -637,88 +761,7 @@ function renderDetectionsList(detections, bestBbox) {
   allDetectionsWrap.classList.add('show');
 }
 
-/* ════════════════════════════════════════════════
-   HISTORY – LOAD FROM API
-════════════════════════════════════════════════ */
-async function loadHistory() {
-  try {
-    const res  = await fetch(CONFIG.API_HISTORY, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return;
-    const data = await res.json();
-    renderHistory(data);
-  } catch (e) {
-    console.warn('[History] Không tải được lịch sử:', e);
-  }
-}
 
-function renderHistory(items) {
-  // Xóa cards cũ (giữ lại historyEmpty)
-  Array.from(historyList.children).forEach(child => {
-    if (child !== historyEmpty) child.remove();
-  });
-
-  if (!items || items.length === 0) {
-    historyEmpty.style.display = 'flex';
-    return;
-  }
-  historyEmpty.style.display = 'none';
-
-  items.forEach((item, idx) => {
-    const card = document.createElement('div');
-    card.className = 'history-card';
-    card.style.animationDelay = `${idx * 40}ms`;
-
-    const ts = new Date(item.timestamp);
-    const timeStr = ts.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const dateStr = ts.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-
-    card.innerHTML = `
-      <div class="history-card-name">${getPlantEmoji(item.plant_name)} ${item.plant_name}</div>
-      <div class="history-card-sci">${item.scientific_name || 'Chưa có tên khoa học'}</div>
-      <div class="history-card-meta">
-        <span class="history-card-conf">${Math.round(item.confidence * 100)}%</span>
-        <span class="history-card-time">⚡${item.processing_time_ms}ms · ${timeStr} ${dateStr}</span>
-      </div>
-    `;
-
-    // Click to re-view history
-    card.addEventListener('click', async () => {
-      try {
-        const res = await fetch(`${CONFIG.API_BASE}/api/history/${item.id}`);
-        if (!res.ok) throw new Error('Không tải được chi tiết lịch sử');
-        const detail = await res.json();
-        
-        // Restore state
-        lastResult = {
-          plant_name: detail.plant_name,
-          scientific_name: detail.scientific_name,
-          confidence: detail.confidence,
-          all_detections: detail.all_detections,
-          bbox: detail.bbox,
-          processing_time_ms: detail.processing_time_ms
-        };
-        
-        resultImg.src = detail.image_base64;
-        selectedIndex = 0;
-        
-        // Render again
-        renderResult(lastResult);
-        
-        // Scroll to result
-        resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (err) {
-        showToast('❌ Lỗi: ' + err.message, 'error');
-      }
-    });
-
-    historyList.appendChild(card);
-  });
-}
-
-// Nút ẩn history section
-btnClearHistory.addEventListener('click', () => {
-  $('history-section').style.display = 'none';
-});
 
 /* ════════════════════════════════════════════════
    BOUNDING BOX CANVAS
@@ -966,14 +1009,18 @@ function setupEventListeners() {
     btnCapture.addEventListener('click', () => {
       console.log('[Event] btnCapture clicked');
       if (!webcamStream) return;
-      webcamCanvas.width = webcamVideo.videoWidth;
+      webcamCanvas.width  = webcamVideo.videoWidth;
       webcamCanvas.height = webcamVideo.videoHeight;
       const ctx = webcamCanvas.getContext('2d');
-      
-      ctx.translate(webcamCanvas.width, 0);
-      ctx.scale(-1, 1);
+
+      // Chỉ mirror (lật ngang) khi dùng camera TRƯỚC (selfie/user)
+      // Camera sau (environment) KHÔNG lật → ảnh đúng hướng để nhận diện cây
+      if (currentFacingMode === 'user') {
+        ctx.translate(webcamCanvas.width, 0);
+        ctx.scale(-1, 1);
+      }
       ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
-      
+
       webcamCanvas.toBlob(blob => {
         const file = new File([blob], `webcam_${Date.now()}.jpg`, { type: 'image/jpeg' });
         handleFile(file);
@@ -982,6 +1029,16 @@ function setupEventListeners() {
     });
     addTouchFeedback(btnCapture);
     console.log('✅ btnCapture listeners attached');
+  }
+
+  // ── SWITCH CAMERA BUTTON (mobile) ──
+  if (btnSwitchCamera) {
+    btnSwitchCamera.addEventListener('click', () => {
+      console.log('[Event] btnSwitchCamera clicked, current:', currentFacingMode);
+      switchCamera();
+    });
+    addTouchFeedback(btnSwitchCamera);
+    console.log('✅ btnSwitchCamera listeners attached');
   }
 
   // ── OTHER BUTTONS ──
@@ -1011,8 +1068,7 @@ function setupEventListeners() {
   hideResult();
   console.log('✅ UI initialized');
   
-  loadHistory();   // Tải lịch sử khi mở trang
-  console.log('✅ History loaded');
+
   
   updateTheme('leaf'); // Mặc định chuyển sang nature theme khi bắt đầu
   console.log('✅ Theme updated');

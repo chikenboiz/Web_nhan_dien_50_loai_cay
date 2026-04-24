@@ -151,12 +151,20 @@ PLANT_DATABASE: dict[str, dict] = {
         "warning": "Quét lá đợt thu rơi rụng khá mệt nhoài."
     },
     "Cây Chuối": {
-        "scientific_name": "Musa",
-        "description": "Lá biếc xanh buông thõng, buồng nặng cong trĩu vạn nải ngọt.",
-        "characteristics": "Nhiều bẹ lá giả ép dính, lá nguyên mượt bản cực đại xé bởi gió mưa.",
-        "uses": "Chế biến thực phẩm từ hoa, rễ, quả, lá chuối bó kẹo bánh.",
-        "care": "💧 Luôn đòi hỏi nước mát. ☀️ Nắng tự do. 🌱 Trống bùn tốt, phù sa đất bùn sét.",
-        "warning": "Cây chuối rất mềm thân rễ cạn dễ dập nát gió to."
+        "scientific_name": "Musa spp.",
+        "description": "Cây chuối là cây ăn quả cỡ lớn ở vùng nhiệt đới, thân giả cao 2-9m, quả giàu dinh dưỡng, được sử dụng rộng rãi trong ẩm thực, y học cổ truyền Việt Nam.",
+        "characteristics": "Thân giả cao 2-9m, được tạo thành từ các lá quấn chồng lên nhau. Lá rất to, dài 2.7m x rộng 60cm, xanh lục bóng. Nải quả gồm 3-20 tầng, mỗi tầng có ~20 quả.",
+        "uses": "Quả ăn tươi hoặc nấu chín, giàu vitamin B6, C, kali. Lá dùng gói bánh, bao thực phẩm. Bắp chuối ăn rau, nấu canh. Hoa chuối nấu canh, salad. Trong y học: chữa ho, ho khan, hỗ trợ tiêu hóa.",
+        "care": "💧 Tưới thường xuyên 3-5 lần/tuần, giữ đất luôn ẩm. ☀️ Ánh sáng mạnh 8+ giờ/ngày. 🌱 Đất tơi xốp, giàu chất hữu cơ, thoát nước tốt. Bón phân hàng tháng. Nhiệt độ tối ưu 24-30°C.",
+        "warning": "Không độc tính, an toàn cho tất cả độ tuổi. Cây chuối rất mềm thân rễ cạn, dễ gãy khi gió to."
+    },
+    "Cây Đu Dủ": {
+        "scientific_name": "Carica papaya",
+        "description": "Cây đu dủ là cây ăn quả có giá trị cao, mọc nhanh ở vùng nhiệt đới và cận nhiệt đới, thân cao 2-4m, quả tròn hoặc trứng, rất giàu vitamin A, C, canxi, sắt. Được trồng rộng rãi vì dễ chăm sóc và năng suất cao.",
+        "characteristics": "Thân thẳng, không phân nhánh hoặc ít nhánh, lá to xẻ thùy có cuống dài. Hoa nhỏ, mọc từ nách lá. Quả dạng bầu hay trứng, vị to, ngoài xanh hay vàng, thịt cam vàng, chứa nhiều hạt đen.",
+        "uses": "Quả ăn tươi, nấu sinh tố, nấu tart. Lá dùng nấu súp hay giã làm thuốc trị sốt rét. Enzyme papain tìm trong lá dùng làm mềm thịt. Hạt có tính nóng, dùng làm thuốc. Trong y học: tốt cho tiêu hóa, chữa ko hấp thụ dưỡng chất.",
+        "care": "💧 Tưới phổ biến, không tích nước, thoát nước tốt. ☀️ Ưa nắng, cần 8-12 giờ nắng/ngày. 🌱 Đất phù sa, thoát nước tốt, pH 6-7. Bón phân mỗi 2 tuần. Nhiệt độ 20-30°C, tránh lạnh.",
+        "warning": "Không độc tính nhưng nên thận trọng với phụ nữ mang thai vì lá có tính nóng. Enzyme papain có thể gây ngứa miệng nếu ăn quả xanh."
     },
     "Cây Giấm": {
         "scientific_name": "Hibiscus sabdariffa",
@@ -436,9 +444,32 @@ class PlantPredictor:
             )
 
         # load model – ultralytics tự chọn CPU/CUDA
-        self.model  = YOLO(str(MODEL_PATH))
-        self.labels = _load_labels()
+        self.model = YOLO(str(MODEL_PATH))
+
+        # Ưu tiên tên từ labels.txt (có thể đã được tuỳ chỉnh tiếng Việt)
+        # Chỉ fallback sang model.names nếu labels.txt không tồn tại hoặc số lượng sai
+        file_labels = _load_labels()
+        model_labels = []
+        if hasattr(self.model, 'names') and self.model.names:
+            model_labels = [self.model.names[i] for i in sorted(self.model.names.keys())]
+
+        if file_labels and len(file_labels) == len(model_labels):
+            # Dùng labels.txt (đã được dịch sang tiếng Việt)
+            self.labels = file_labels
+            logger.info("✅ Dùng nhãn từ labels.txt: %d loài.", len(self.labels))
+        elif model_labels:
+            # Fallback: dùng nhãn từ model khi labels.txt không khớp
+            self.labels = model_labels
+            logger.warning(
+                "⚠️  labels.txt (%d nhãn) không khớp với model (%d nhãn). "
+                "Dùng nhãn từ model.",
+                len(file_labels), len(model_labels)
+            )
+        else:
+            self.labels = file_labels
+
         logger.info("✅ Model load thành công. Số lớp: %d", len(self.labels))
+        logger.info("📋 Danh sách loài: %s", self.labels)
 
     # ── Tiền xử lý ───────────────────────────────────────────────────────────
     @staticmethod

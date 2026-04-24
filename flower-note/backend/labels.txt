@@ -1,13 +1,13 @@
-0: Bản Tay Bắc
-1: Cây Đu
+0: Bàn Tay Bạc
+1: Ngũ Gia Bì
 2: Cây Xà Phòng
-3: Chò Chỉ
-4: Dã Quỳ
+3: Chó Chi
+4: Dạ Quỳnh
 5: Đinh Lăng Lá Tròn
 6: Đu Đủ
-7: Đủng Đỉnh
+7: Dừa Đình
 8: Đuôi Công
-9: Dương Xỉ
+9: Dương Sỉ
 10: Hoa Hồng
 11: Hoa Dừa Cạn
 12: Huyết Dụ
@@ -19,7 +19,7 @@
 18: Cây Lá Lốt
 19: Cây Mít
 20: Cây Ổi
-21: Cây Phong
+21: Cây Phong Lá Đỏ
 22: Cây Lưỡi Hổ
 23: Cây Ngựa Vằn
 24: Cây Ráy
@@ -37,5 +37,14 @@
 36: Hoa Ngọc Bút
 37: Hoa Sim
 38: Hoa Hồng Môn
-39: Cây Sò Huyết
-40: Cây Ngọc Ngân
+39: Hoa Hướng Dương
+40: Cây Trầu Không
+41: Cây Sò Huyết
+42: Hoa Mai Địa Thảo
+43: Cây Ngọc Ngân
+44: Hoa Mẫu Đơn
+45: Hoa Sài Đất
+46: Hoa Lan Ý
+47: Hoa Ngũ Sắc
+48: Hoa Huỳnh Anh
+49: Cây Xương Rồng
