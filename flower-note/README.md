@@ -163,32 +163,33 @@ JSON response → Frontend render
 ## 📋 Danh sách 50 loài cây (labels.txt)
 
 | # | Tên cây | # | Tên cây |
-|---|---------|---|---------|
-| 0 | Lô hội (Aloe Vera) | 25 | Cây ráy (Alocasia) |
-| 1 | Bạch tuộc (Monstera) | 26 | Cây sung trưởng (Ficus Benjamina) |
-| 2 | Sen đá (Echeveria) | 27 | Thiết mộc lan (Pandanus) |
-| 3 | Xương rồng tai thỏ | 28 | Cây đơn đỏ (Syzygium) |
-| 4 | Kim tiền (ZZ Plant) | 29 | Cây sung (Ficus Carica) |
-| 5 | Trầu bà (Pothos) | 30 | Húng quế (Basil) |
-| 6 | Đa búp đỏ (Rubber Tree) | 31 | Húng lủi (Spearmint) |
-| 7 | Lưỡi hổ (Snake Plant) | 32 | Rau má (Centella) |
-| 8 | Cây bơ (Avocado) | 33 | Sả chanh (Lemongrass) |
-| 9 | Hoa hồng (Rose) | 34 | Gừng (Ginger) |
-| 10 | Cúc vạn thọ (Marigold) | 35 | Nghệ (Turmeric) |
-| 11 | Hướng dương (Sunflower) | 36 | Tía tô (Perilla) |
-| 12 | Hoa lan (Orchid) | 37 | Lá lốt (Piper) |
-| 13 | Cẩm tú cầu (Hydrangea) | 38 | Nha đam biển (Aloe Barbadensis) |
-| 14 | Hoa anh đào (Sakura) | 39 | Cây diếp cá (Houttuynia) |
-| 15 | Hoa tulip (Tulip) | 40 | Trà xanh (Green Tea) |
-| 16 | Hoa huệ (Lily) | 41 | Cây cà phê (Coffee) |
-| 17 | Hoa lavender (Lavender) | 42 | Cây mít (Jackfruit) |
-| 18 | Hoa mai (Vietnamese Mai) | 43 | Cây nhãn (Longan) |
-| 19 | Hoa đào (Peach Blossom) | 44 | Cây xoài (Mango) |
-| 20 | Cây xanh tre (Bamboo) | 45 | Cây bưởi (Pomelo) |
-| 21 | Cây dừa cảnh (Cycas) | 46 | Cây cam (Orange) |
-| 22 | Cây phát tài (Lucky Bamboo) | 47 | Cây ổi (Guava) |
-| 23 | Ngũ gia bì (Schefflera) | 48 | Cây khế (Starfruit) |
-| 24 | Cây đuôi công (Peace Lily) | 49 | Cây sapô (Sapodilla) |
+| # | Tên cây | # | Tên cây |
+| :---: | :--- | :---: | :--- |
+| **0** | Ban Tây Bắc (*Bauhinia variegata L.*) | **25** | Cây Sắn dây (*Pueraria thomsonii Benth*) |
+| **1** | Ngũ Gia Bì (*Schefflera heptaphylla (L.) Frodin*) | **26** | Cây Thần tài (*Dracaena sanderiana*) |
+| **2** | Cây Xà phòng (*Quillaja saponaria Molina*) | **27** | Cây Vạn tuế (*Cycas revoluta Thunb*) |
+| **3** | Cây chò chỉ (*Parashorea chinensis Wang Hsie*) | **28** | Cây Bồ đề (*Ficus religiosa L*) |
+| **4** | Cây dã quỳ (*Tithonia diversifolia (Hemsl.) A. Gray*) | **29** | Hoa Cẩm tú cầu (*Hydrangea macrophylla*) |
+| **5** | Cây đinh lăng lá tròn (*Polyscias balfouriana*) | **30** | Cây Cô tòng (*Codiaeum variegatum (L.) Bl. var. pictum*) |
+| **6** | Cây đu đủ (*Carica papaya L.*) | **31** | Hoa Dâm bụt (*Hibiscus rosa-sinensis L*) |
+| **7** | Cây đủng đỉnh (*Caryota mitis Lour.*) | **32** | Hoa Đỗ quyên (*Rhododendron simsii Planch*) |
+| **8** | Cây đuôi công (*Calathea makoyana*) | **33** | Hoa Loa kèn (*Lilium longiflorum Thunb.*) |
+| **9** | Cây dương xỉ (*Polypodium leucotomos*) | **34** | Hoa Lựu (*Punica granatum L.*) |
+| **10** | Hoa hồng (*Rosa sp.*) | **35** | Hoa Ly (*Lilium Longiflorum*) |
+| **11** | Hoa dừa cạn (*Catharanthus roseus (L.) G. Don*) | **36** | Hoa Ngọc bút (*Tabernaemontana divaricata*) |
+| **12** | Cây huyết dụ (*Cordyline fruticosa (L.) A. Chev*) | **37** | Hoa Sim (*Rhodomyrtus tomentosa*) |
+| **13** | Cây Tre (*Bambusa sp.*) | **38** | Hoa Hồng môn (*Anthurium andraeanum*) |
+| **14** | Cây Bàng (*Terminalia catappa L*) | **39** | Hoa Hướng dương (*Helianthus annuus L*) |
+| **15** | Cây Chuối (*Musa spp*) | **40** | Cây Trầu không (*Piper betle L.*) |
+| **16** | Cây Giam (Sưa) (*Mitragyna speciosa*) | **41** | Cây Sò huyết (*Tradescantia spathacea Sw*) |
+| **17** | Cây Lan nước (*Echinodorus cordifolius*) | **42** | Hoa Mai địa thảo (*Impatiens walleriana*) |
+| **18** | Cây Lá lốt (*Piper sarmentosum Roxb*) | **43** | Cây Ngọc ngân (*Aglaonema oblongifolium*) |
+| **19** | Cây Mít (*Artocarpus heterophyllus Lam*) | **44** | Hoa mẫu đơn (*Ixora coccinea*) |
+| **20** | Cây Ổi (*Psidium guajava L.*) | **45** | Hoa sài đất (*Wedelia chinensis (Osbeck) Merr.*) |
+| **21** | Cây Phong (*Acer rubrum*) | **46** | Hoa lan ý (*Spathiphyllum wallisii*) |
+| **22** | Cây Lưỡi hổ (*Dracaena trifasciata*) | **47** | Hoa ngũ sắc (*Lantana camara L.*) |
+| **23** | Cây Ngựa vằn (*Aphelandra squarrosa Nees*) | **48** | Hoa huỳnh anh (*Allamanda cathartica L.*) |
+| **24** | Cây Ráy (*Alocasia odora (Roxb) C. Koch*) | **49** | Xương rồng (*Cactaceae*) |
 
 ---
 
