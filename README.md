@@ -2,7 +2,7 @@
 🌿 AI nhận diện cây - lá
 dữ liệu 50 loài cây 
 ✔ Nhận diện bằng ảnh, cam
-✔ Sử dụng YOLO + OCR
+✔ Sử dụng YOLO 
 ✔ Dataset thực tế
 👉 Demo: (ảnh/video)
 💰 Muốn nhận full source code:
